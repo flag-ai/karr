@@ -26,7 +26,7 @@ func TestHealth_Success(t *testing.T) {
 	srv, mux := newTestServer(t)
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprintln(w, `{"status":"ok"}`)
+		_, _ = fmt.Fprintln(w, `{"status":"ok"}`)
 	})
 
 	c := NewClient(srv.URL, "test-token")
@@ -69,7 +69,7 @@ func TestSystemInfo(t *testing.T) {
 		assert.Equal(t, http.MethodGet, r.Method)
 		assert.Equal(t, "Bearer test-token", r.Header.Get("Authorization"))
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(expected)
+		_ = json.NewEncoder(w).Encode(expected)
 	})
 
 	c := NewClient(srv.URL, "test-token")
@@ -99,7 +99,7 @@ func TestGPUStatus(t *testing.T) {
 	}
 	mux.HandleFunc("/api/v1/gpu/status", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(expected)
+		_ = json.NewEncoder(w).Encode(expected)
 	})
 
 	c := NewClient(srv.URL, "test-token")
@@ -137,7 +137,7 @@ func TestListContainers(t *testing.T) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(expected)
+		_ = json.NewEncoder(w).Encode(expected)
 	})
 
 	c := NewClient(srv.URL, "test-token")
@@ -168,7 +168,7 @@ func TestCreateContainer(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(map[string]string{"id": "new-container-id"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"id": "new-container-id"})
 	})
 
 	c := NewClient(srv.URL, "test-token")
@@ -228,7 +228,7 @@ func TestStreamLogs(t *testing.T) {
 			t.Fatal("expected flusher")
 		}
 		for i := 0; i < 3; i++ {
-			fmt.Fprintf(w, "data: log line %d\n\n", i)
+			_, _ = fmt.Fprintf(w, "data: log line %d\n\n", i)
 			flusher.Flush()
 		}
 	})
@@ -272,7 +272,7 @@ func TestRetryOnError(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			conn.Close()
+			_ = conn.Close()
 			return
 		}
 		w.WriteHeader(http.StatusOK)

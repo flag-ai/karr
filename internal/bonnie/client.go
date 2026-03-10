@@ -83,24 +83,26 @@ func (c *httpClient) do(ctx context.Context, method, path string, body io.Reader
 	return nil, fmt.Errorf("bonnie: request failed after 3 attempts: %w", lastErr)
 }
 
+// Health implements Client.
 func (c *httpClient) Health(ctx context.Context) error {
 	resp, err := c.do(ctx, http.MethodGet, "/health", nil)
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 300 {
 		return fmt.Errorf("bonnie: health check returned %d", resp.StatusCode)
 	}
 	return nil
 }
 
+// SystemInfo implements Client.
 func (c *httpClient) SystemInfo(ctx context.Context) (*SystemInfoResponse, error) {
 	resp, err := c.do(ctx, http.MethodGet, "/api/v1/system/info", nil)
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	var result SystemInfoResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
@@ -109,12 +111,13 @@ func (c *httpClient) SystemInfo(ctx context.Context) (*SystemInfoResponse, error
 	return &result, nil
 }
 
+// GPUStatus implements Client.
 func (c *httpClient) GPUStatus(ctx context.Context) (*GPUSnapshot, error) {
 	resp, err := c.do(ctx, http.MethodGet, "/api/v1/gpu/status", nil)
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	var result GPUSnapshot
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
@@ -123,12 +126,13 @@ func (c *httpClient) GPUStatus(ctx context.Context) (*GPUSnapshot, error) {
 	return &result, nil
 }
 
+// ListContainers implements Client.
 func (c *httpClient) ListContainers(ctx context.Context) ([]ContainerInfo, error) {
 	resp, err := c.do(ctx, http.MethodGet, "/api/v1/containers", nil)
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	var result []ContainerInfo
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
@@ -137,6 +141,7 @@ func (c *httpClient) ListContainers(ctx context.Context) ([]ContainerInfo, error
 	return result, nil
 }
 
+// CreateContainer implements Client.
 func (c *httpClient) CreateContainer(ctx context.Context, req *CreateContainerRequest) (string, error) {
 	body, err := json.Marshal(req)
 	if err != nil {
@@ -147,7 +152,7 @@ func (c *httpClient) CreateContainer(ctx context.Context, req *CreateContainerRe
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
@@ -166,7 +171,7 @@ func (c *httpClient) containerAction(ctx context.Context, id, action string) err
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 300 {
 		respBody, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("bonnie: %s container returned %d: %s", action, resp.StatusCode, string(respBody))
@@ -174,24 +179,28 @@ func (c *httpClient) containerAction(ctx context.Context, id, action string) err
 	return nil
 }
 
+// StartContainer implements Client.
 func (c *httpClient) StartContainer(ctx context.Context, id string) error {
 	return c.containerAction(ctx, id, "start")
 }
 
+// StopContainer implements Client.
 func (c *httpClient) StopContainer(ctx context.Context, id string) error {
 	return c.containerAction(ctx, id, "stop")
 }
 
+// RestartContainer implements Client.
 func (c *httpClient) RestartContainer(ctx context.Context, id string) error {
 	return c.containerAction(ctx, id, "restart")
 }
 
+// RemoveContainer implements Client.
 func (c *httpClient) RemoveContainer(ctx context.Context, id string) error {
 	resp, err := c.do(ctx, http.MethodDelete, "/api/v1/containers/"+id, nil)
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 300 {
 		respBody, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("bonnie: remove container returned %d: %s", resp.StatusCode, string(respBody))
@@ -199,8 +208,9 @@ func (c *httpClient) RemoveContainer(ctx context.Context, id string) error {
 	return nil
 }
 
+// StreamLogs implements Client.
 func (c *httpClient) StreamLogs(ctx context.Context, id string, callback func(data string)) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/api/v1/containers/"+id+"/logs", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/api/v1/containers/"+id+"/logs", http.NoBody)
 	if err != nil {
 		return fmt.Errorf("bonnie: create log request: %w", err)
 	}
@@ -215,7 +225,7 @@ func (c *httpClient) StreamLogs(ctx context.Context, id string, callback func(da
 	if err != nil {
 		return fmt.Errorf("bonnie: log stream: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Read SSE events.
 	buf := make([]byte, 4096)

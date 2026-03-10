@@ -5,6 +5,7 @@ import "time"
 // GPUVendor identifies the GPU manufacturer.
 type GPUVendor string
 
+// Supported GPU vendors.
 const (
 	GPUVendorNVIDIA  GPUVendor = "nvidia"
 	GPUVendorAMD     GPUVendor = "amd"

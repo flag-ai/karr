@@ -76,12 +76,12 @@ func (r *Registry) LoadFromDB(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("registry: load agents: %w", err)
 	}
-	for _, a := range agents {
-		id, err := uuid.FromBytes(a.ID.Bytes[:])
+	for i := range agents {
+		id, err := uuid.FromBytes(agents[i].ID.Bytes[:])
 		if err != nil {
 			continue
 		}
-		r.Register(id, a.Name, a.Url, a.Token)
+		r.Register(id, agents[i].Name, agents[i].Url, agents[i].Token)
 	}
 	r.logger.Info("loaded agents from database", "count", len(agents))
 	return nil
@@ -94,8 +94,8 @@ func (r *Registry) EnsureDefault(ctx context.Context, url, token string) error {
 	if err != nil {
 		return err
 	}
-	for _, a := range agents {
-		if a.Url == url {
+	for i := range agents {
+		if agents[i].Url == url {
 			return nil // Already registered.
 		}
 	}
