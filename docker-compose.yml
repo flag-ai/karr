@@ -16,14 +16,39 @@ services:
       retries: 5
 
   karr:
-    build: .
+    build:
+      context: .
+      args:
+        VERSION: dev
+        COMMIT: local
+        BUILD_DATE: "2024-01-01"
     ports:
       - "8080:8080"
     environment:
       DATABASE_URL: postgres://karr:karr-dev@postgres:5432/karr?sslmode=disable
+      KARR_DEFAULT_AGENT_URL: ""
+      KARR_DEFAULT_AGENT_TOKEN: ""
     depends_on:
       postgres:
         condition: service_healthy
+
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on:
+      - karr
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    depends_on:
+      - prometheus
 
 volumes:
   pgdata:
