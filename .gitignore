@@ -20,6 +20,7 @@ vendor/
 node_modules/
 web/dist/*
 !web/dist/.gitkeep
+*.tsbuildinfo
 
 # Environment
 .env
