@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -9,6 +10,7 @@ import (
 	"github.com/flag-ai/karr/internal/db/sqlc"
 	"github.com/flag-ai/karr/internal/models"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 // CreateProjectInput holds the parameters for creating a new project.
@@ -54,9 +56,13 @@ func (s *ProjectService) List(ctx context.Context) ([]models.Project, error) {
 }
 
 // Get returns a single project by ID.
+// Returns ErrNotFound if the project does not exist.
 func (s *ProjectService) Get(ctx context.Context, id uuid.UUID) (models.Project, error) {
 	row, err := s.queries.GetProject(ctx, toPgUUID(id))
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return models.Project{}, fmt.Errorf("get project %s: %w", id, ErrNotFound)
+		}
 		return models.Project{}, fmt.Errorf("get project %s: %w", id, err)
 	}
 	return projectFromRow(row), nil
@@ -86,10 +92,14 @@ func (s *ProjectService) Create(ctx context.Context, input CreateProjectInput) (
 }
 
 // Update modifies an existing project. Only non-nil fields are applied.
+// Returns ErrNotFound if the project does not exist.
 func (s *ProjectService) Update(ctx context.Context, id uuid.UUID, input UpdateProjectInput) (models.Project, error) {
 	// Fetch the current project to apply partial updates.
 	current, err := s.queries.GetProject(ctx, toPgUUID(id))
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return models.Project{}, fmt.Errorf("get project %s for update: %w", id, ErrNotFound)
+		}
 		return models.Project{}, fmt.Errorf("get project %s for update: %w", id, err)
 	}
 

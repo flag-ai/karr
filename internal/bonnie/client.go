@@ -1,6 +1,7 @@
 package bonnie
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -59,9 +60,23 @@ func (c *httpClient) do(ctx context.Context, method, path string, body io.Reader
 		return nil, fmt.Errorf("bonnie: build url: %w", err)
 	}
 
+	// Buffer body so retries can replay it.
+	var bodyBytes []byte
+	if body != nil {
+		bodyBytes, err = io.ReadAll(body)
+		if err != nil {
+			return nil, fmt.Errorf("bonnie: read request body: %w", err)
+		}
+	}
+
 	var lastErr error
 	for attempt := 0; attempt < 3; attempt++ {
-		req, err := http.NewRequestWithContext(ctx, method, reqURL, body)
+		var reqBody io.Reader
+		if bodyBytes != nil {
+			reqBody = bytes.NewReader(bodyBytes)
+		}
+
+		req, err := http.NewRequestWithContext(ctx, method, reqURL, reqBody)
 		if err != nil {
 			return nil, fmt.Errorf("bonnie: create request: %w", err)
 		}
@@ -158,7 +173,7 @@ func (c *httpClient) CreateContainer(ctx context.Context, req *CreateContainerRe
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		respBody, _ := io.ReadAll(resp.Body)
 		return "", fmt.Errorf("bonnie: create container returned %d: %s", resp.StatusCode, string(respBody))
 	}
@@ -238,23 +253,19 @@ func (c *httpClient) StreamLogs(ctx context.Context, id string, callback func(da
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	// Read SSE events.
-	buf := make([]byte, 4096)
-	for {
-		n, readErr := resp.Body.Read(buf)
-		if n > 0 {
-			lines := strings.Split(string(buf[:n]), "\n")
-			for _, line := range lines {
-				if strings.HasPrefix(line, "data: ") {
-					callback(strings.TrimPrefix(line, "data: "))
-				}
-			}
+	// Read SSE events line by line.
+	scanner := bufio.NewScanner(resp.Body)
+	for scanner.Scan() {
+		if ctx.Err() != nil {
+			return nil
 		}
-		if readErr != nil {
-			if readErr == io.EOF || ctx.Err() != nil {
-				return nil
-			}
-			return readErr
+		line := scanner.Text()
+		if strings.HasPrefix(line, "data: ") {
+			callback(strings.TrimPrefix(line, "data: "))
 		}
 	}
+	if err := scanner.Err(); err != nil && ctx.Err() == nil {
+		return err
+	}
+	return nil
 }

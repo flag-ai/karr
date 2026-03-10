@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"github.com/flag-ai/karr/internal/db/sqlc"
 	"github.com/flag-ai/karr/internal/models"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 // CreateEnvironmentInput holds the parameters for creating a new environment.
@@ -84,9 +86,13 @@ func (s *EnvironmentService) ListByProject(ctx context.Context, projectID uuid.U
 }
 
 // Get returns a single environment by ID.
+// Returns ErrNotFound if the environment does not exist.
 func (s *EnvironmentService) Get(ctx context.Context, id uuid.UUID) (models.Environment, error) {
 	row, err := s.queries.GetEnvironment(ctx, toPgUUID(id))
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return models.Environment{}, fmt.Errorf("get environment %s: %w", id, ErrNotFound)
+		}
 		return models.Environment{}, fmt.Errorf("get environment %s: %w", id, err)
 	}
 	return environmentFromRow(row), nil
@@ -115,14 +121,27 @@ func (s *EnvironmentService) Create(ctx context.Context, input CreateEnvironment
 	}
 
 	// Build DB params.
+	envJSON, err := marshalJSONB(input.Env)
+	if err != nil {
+		return models.Environment{}, fmt.Errorf("marshal env: %w", err)
+	}
+	mountsJSON, err := marshalJSONB(input.Mounts)
+	if err != nil {
+		return models.Environment{}, fmt.Errorf("marshal mounts: %w", err)
+	}
+	commandJSON, err := marshalJSONB(input.Command)
+	if err != nil {
+		return models.Environment{}, fmt.Errorf("marshal command: %w", err)
+	}
+
 	params := sqlc.CreateEnvironmentParams{
 		AgentID: toPgUUID(input.AgentID),
 		Name:    name,
 		Image:   image,
 		Gpu:     input.GPU,
-		Env:     marshalJSONB(input.Env),
-		Mounts:  marshalJSONB(input.Mounts),
-		Command: marshalJSONB(input.Command),
+		Env:     envJSON,
+		Mounts:  mountsJSON,
+		Command: commandJSON,
 	}
 	if input.ProjectID != nil {
 		params.ProjectID = toPgUUID(*input.ProjectID)
@@ -285,6 +304,9 @@ func (s *EnvironmentService) StreamLogs(ctx context.Context, id uuid.UUID, callb
 func (s *EnvironmentService) getEnvAndClient(ctx context.Context, id uuid.UUID) (models.Environment, bonnie.Client, error) {
 	row, err := s.queries.GetEnvironment(ctx, toPgUUID(id))
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return models.Environment{}, nil, fmt.Errorf("get environment %s: %w", id, ErrNotFound)
+		}
 		return models.Environment{}, nil, fmt.Errorf("get environment %s: %w", id, err)
 	}
 

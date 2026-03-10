@@ -42,8 +42,12 @@ func (h *AgentHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 	agent, err := h.service.Get(r.Context(), id)
 	if err != nil {
+		if isNotFound(err) {
+			writeError(w, http.StatusNotFound, "agent not found")
+			return
+		}
 		h.logger.Error("get agent", "id", id, "error", err)
-		writeError(w, http.StatusNotFound, "agent not found")
+		writeError(w, http.StatusInternalServerError, "failed to get agent")
 		return
 	}
 	writeJSON(w, http.StatusOK, agent)
@@ -97,8 +101,12 @@ func (h *AgentHandler) GetStatus(w http.ResponseWriter, r *http.Request) {
 
 	status, err := h.service.GetStatus(r.Context(), id)
 	if err != nil {
+		if isNotFound(err) {
+			writeError(w, http.StatusNotFound, "agent not found")
+			return
+		}
 		h.logger.Error("get agent status", "id", id, "error", err)
-		writeError(w, http.StatusNotFound, "agent not found")
+		writeError(w, http.StatusInternalServerError, "failed to get agent status")
 		return
 	}
 	writeJSON(w, http.StatusOK, status)

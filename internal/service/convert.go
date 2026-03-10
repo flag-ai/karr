@@ -2,6 +2,8 @@ package service
 
 import (
 	"encoding/json"
+	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/flag-ai/karr/internal/db/sqlc"
@@ -81,23 +83,29 @@ func environmentFromRow(row sqlc.KarrEnvironment) models.Environment { //nolint:
 		env.ProjectID = &pid
 	}
 
-	// Unmarshal JSONB fields.
-	_ = json.Unmarshal(row.Env, &env.Env)
-	_ = json.Unmarshal(row.Mounts, &env.Mounts)
-	_ = json.Unmarshal(row.Command, &env.Command)
+	// Unmarshal JSONB fields — log warnings on corruption.
+	if err := json.Unmarshal(row.Env, &env.Env); err != nil && len(row.Env) > 0 {
+		slog.Warn("failed to unmarshal environment env field", "id", env.ID, "error", err)
+	}
+	if err := json.Unmarshal(row.Mounts, &env.Mounts); err != nil && len(row.Mounts) > 0 {
+		slog.Warn("failed to unmarshal environment mounts field", "id", env.ID, "error", err)
+	}
+	if err := json.Unmarshal(row.Command, &env.Command); err != nil && len(row.Command) > 0 {
+		slog.Warn("failed to unmarshal environment command field", "id", env.ID, "error", err)
+	}
 
 	return env
 }
 
 // marshalJSONB marshals v to JSON bytes suitable for a JSONB column.
-// Returns nil on error or if v is nil.
-func marshalJSONB(v any) []byte {
+// Returns an error if marshalling fails.
+func marshalJSONB(v any) ([]byte, error) {
 	if v == nil {
-		return nil
+		return []byte("[]"), nil
 	}
 	b, err := json.Marshal(v)
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("marshal JSONB: %w", err)
 	}
-	return b
+	return b, nil
 }

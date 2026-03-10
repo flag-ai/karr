@@ -42,8 +42,12 @@ func (h *ProjectHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 	project, err := h.service.Get(r.Context(), id)
 	if err != nil {
+		if isNotFound(err) {
+			writeError(w, http.StatusNotFound, "project not found")
+			return
+		}
 		h.logger.Error("get project", "id", id, "error", err)
-		writeError(w, http.StatusNotFound, "project not found")
+		writeError(w, http.StatusInternalServerError, "failed to get project")
 		return
 	}
 	writeJSON(w, http.StatusOK, project)
@@ -87,6 +91,10 @@ func (h *ProjectHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	project, err := h.service.Update(r.Context(), id, req)
 	if err != nil {
+		if isNotFound(err) {
+			writeError(w, http.StatusNotFound, "project not found")
+			return
+		}
 		h.logger.Error("update project", "id", id, "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to update project")
 		return

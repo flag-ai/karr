@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"github.com/flag-ai/karr/internal/db/sqlc"
 	"github.com/flag-ai/karr/internal/models"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 // CreateAgentInput holds the parameters for registering a new agent.
@@ -60,9 +62,13 @@ func (s *AgentService) List(ctx context.Context) ([]models.Agent, error) {
 }
 
 // Get returns a single agent by ID with the token stripped.
+// Returns ErrNotFound if the agent does not exist.
 func (s *AgentService) Get(ctx context.Context, id uuid.UUID) (models.Agent, error) {
 	row, err := s.queries.GetAgent(ctx, toPgUUID(id))
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return models.Agent{}, fmt.Errorf("get agent %s: %w", id, ErrNotFound)
+		}
 		return models.Agent{}, fmt.Errorf("get agent %s: %w", id, err)
 	}
 
@@ -122,9 +128,13 @@ func (s *AgentService) Delete(ctx context.Context, id uuid.UUID) error {
 }
 
 // GetStatus queries the live BONNIE agent for system info and GPU status.
+// Returns ErrNotFound if the agent does not exist.
 func (s *AgentService) GetStatus(ctx context.Context, id uuid.UUID) (AgentStatusResponse, error) {
 	row, err := s.queries.GetAgent(ctx, toPgUUID(id))
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return AgentStatusResponse{}, fmt.Errorf("get agent %s: %w", id, ErrNotFound)
+		}
 		return AgentStatusResponse{}, fmt.Errorf("get agent %s: %w", id, err)
 	}
 

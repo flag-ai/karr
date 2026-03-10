@@ -2,11 +2,18 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
+	"github.com/flag-ai/karr/internal/service"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
+
+// isNotFound returns true if the error wraps service.ErrNotFound.
+func isNotFound(err error) bool {
+	return errors.Is(err, service.ErrNotFound)
+}
 
 // errorResponse is a standard error envelope.
 type errorResponse struct {

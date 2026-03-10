@@ -44,8 +44,12 @@ func (h *EnvironmentHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 	env, err := h.service.Get(r.Context(), id)
 	if err != nil {
+		if isNotFound(err) {
+			writeError(w, http.StatusNotFound, "environment not found")
+			return
+		}
 		h.logger.Error("get environment", "id", id, "error", err)
-		writeError(w, http.StatusNotFound, "environment not found")
+		writeError(w, http.StatusInternalServerError, "failed to get environment")
 		return
 	}
 	writeJSON(w, http.StatusOK, env)
