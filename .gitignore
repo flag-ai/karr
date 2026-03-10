@@ -1,0 +1,26 @@
+# Binaries
+/karr
+*.exe
+
+# Test
+coverage.out
+*.test
+
+# Vendor
+vendor/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Node
+node_modules/
+web/dist/*
+!web/dist/.gitkeep
+
+# Environment
+.env
+.env.local
