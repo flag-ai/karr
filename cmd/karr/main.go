@@ -145,6 +145,9 @@ func serve() error {
 	srv := &http.Server{
 		Handler:           router,
 		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      60 * time.Second, // Allows SSE streaming for up to 60s per flush cycle.
+		IdleTimeout:       120 * time.Second,
 	}
 
 	// Start server

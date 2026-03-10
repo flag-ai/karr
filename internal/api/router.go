@@ -30,6 +30,7 @@ func NewRouter(cfg *RouterConfig) *chi.Mux {
 
 	// Global middleware
 	r.Use(middleware.Recovery(cfg.Logger))
+	r.Use(middleware.SecurityHeaders())
 	r.Use(middleware.Logging(cfg.Logger))
 	r.Use(middleware.CORS(cfg.CORSOrigins))
 

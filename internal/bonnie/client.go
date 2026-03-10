@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -53,11 +54,14 @@ func NewClient(baseURL, token string) Client {
 }
 
 func (c *httpClient) do(ctx context.Context, method, path string, body io.Reader) (*http.Response, error) {
-	url := c.baseURL + path
+	reqURL, err := url.JoinPath(c.baseURL, path)
+	if err != nil {
+		return nil, fmt.Errorf("bonnie: build url: %w", err)
+	}
 
 	var lastErr error
 	for attempt := 0; attempt < 3; attempt++ {
-		req, err := http.NewRequestWithContext(ctx, method, url, body)
+		req, err := http.NewRequestWithContext(ctx, method, reqURL, body)
 		if err != nil {
 			return nil, fmt.Errorf("bonnie: create request: %w", err)
 		}
@@ -167,7 +171,7 @@ func (c *httpClient) CreateContainer(ctx context.Context, req *CreateContainerRe
 }
 
 func (c *httpClient) containerAction(ctx context.Context, id, action string) error {
-	resp, err := c.do(ctx, http.MethodPost, "/api/v1/containers/"+id+"/"+action, nil)
+	resp, err := c.do(ctx, http.MethodPost, "/api/v1/containers/"+id+"/"+action, http.NoBody)
 	if err != nil {
 		return err
 	}
@@ -210,7 +214,12 @@ func (c *httpClient) RemoveContainer(ctx context.Context, id string) error {
 
 // StreamLogs implements Client.
 func (c *httpClient) StreamLogs(ctx context.Context, id string, callback func(data string)) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/api/v1/containers/"+id+"/logs", http.NoBody)
+	logURL, err := url.JoinPath(c.baseURL, "/api/v1/containers/"+id+"/logs")
+	if err != nil {
+		return fmt.Errorf("bonnie: build log url: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, logURL, http.NoBody)
 	if err != nil {
 		return fmt.Errorf("bonnie: create log request: %w", err)
 	}
@@ -219,8 +228,10 @@ func (c *httpClient) StreamLogs(ctx context.Context, id string, callback func(da
 	}
 	req.Header.Set("Accept", "text/event-stream")
 
-	// Use a client without timeout for streaming.
-	streamClient := &http.Client{}
+	// Use a transport with idle timeout for streaming instead of an unbounded client.
+	streamClient := &http.Client{
+		Timeout: 5 * time.Minute,
+	}
 	resp, err := streamClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("bonnie: log stream: %w", err)

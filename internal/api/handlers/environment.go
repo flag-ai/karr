@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/flag-ai/karr/internal/service"
 )
@@ -140,7 +141,9 @@ func (h *EnvironmentHandler) Logs(w http.ResponseWriter, r *http.Request) {
 	flusher.Flush()
 
 	err = h.service.StreamLogs(r.Context(), id, func(data string) {
-		_, _ = fmt.Fprintf(w, "data: %s\n\n", data)
+		// Escape embedded newlines to prevent SSE event injection.
+		safe := strings.ReplaceAll(data, "\n", "\\n")
+		_, _ = fmt.Fprintf(w, "data: %s\n\n", safe)
 		flusher.Flush()
 	})
 	if err != nil {
