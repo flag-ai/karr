@@ -20,7 +20,8 @@ type RouterConfig struct {
 	AgentService       service.AgentServicer
 	ProjectService     service.ProjectServicer
 	EnvironmentService service.EnvironmentServicer
-	SPAFS              fs.FS // Embedded SPA filesystem (may be nil for API-only mode).
+	SPAFS              fs.FS  // Embedded SPA filesystem (may be nil for API-only mode).
+	CORSOrigins        string // Comma-separated allowed CORS origins.
 }
 
 // NewRouter builds a chi.Mux with all KARR routes registered.
@@ -30,7 +31,7 @@ func NewRouter(cfg *RouterConfig) *chi.Mux {
 	// Global middleware
 	r.Use(middleware.Recovery(cfg.Logger))
 	r.Use(middleware.Logging(cfg.Logger))
-	r.Use(middleware.CORS())
+	r.Use(middleware.CORS(cfg.CORSOrigins))
 
 	// Health endpoints (no auth)
 	healthH := handlers.NewHealthHandler(cfg.HealthRegistry, cfg.Logger)

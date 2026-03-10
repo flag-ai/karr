@@ -20,6 +20,10 @@ type Config struct {
 
 	// DefaultAgentToken is the bearer token for the default BONNIE agent.
 	DefaultAgentToken string
+
+	// CORSOrigins is a comma-separated list of allowed CORS origins.
+	// If empty, no CORS headers are set (same-origin only).
+	CORSOrigins string
 }
 
 // Load builds a KARR Config by reading environment variables via the secrets provider.
@@ -37,6 +41,7 @@ func Load(ctx context.Context, provider secrets.Provider) (*Config, error) {
 		Base:              *base,
 		DefaultAgentURL:   provider.GetOrDefault(ctx, "KARR_DEFAULT_AGENT_URL", ""),
 		DefaultAgentToken: provider.GetOrDefault(ctx, "KARR_DEFAULT_AGENT_TOKEN", ""),
+		CORSOrigins:       provider.GetOrDefault(ctx, "KARR_CORS_ORIGINS", ""),
 	}, nil
 }
 

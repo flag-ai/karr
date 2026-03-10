@@ -63,6 +63,7 @@ All configuration is via environment variables (or OpenBao secrets):
 | `LISTEN_ADDR` | No | `:8080` | HTTP listen address |
 | `KARR_DEFAULT_AGENT_URL` | No | — | Auto-register a BONNIE agent on startup |
 | `KARR_DEFAULT_AGENT_TOKEN` | No | — | Bearer token for the default agent |
+| `KARR_CORS_ORIGINS` | No | — | Comma-separated allowed CORS origins |
 
 See `.env.example` for all options.
 

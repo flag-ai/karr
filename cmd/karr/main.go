@@ -53,6 +53,7 @@ func run() error {
 func newProviderAndConfig(ctx context.Context) (*config.Config, *slog.Logger, error) {
 	provider, err := secrets.NewProvider(secrets.ProviderOpenBao, nil)
 	if err != nil {
+		slog.Warn("OpenBao unavailable, falling back to environment variables for secrets", "error", err)
 		provider, _ = secrets.NewProvider(secrets.ProviderEnv, nil)
 	}
 
@@ -138,6 +139,7 @@ func serve() error {
 		AgentService:       agentSvc,
 		ProjectService:     projectSvc,
 		EnvironmentService: envSvc,
+		CORSOrigins:        cfg.CORSOrigins,
 	})
 
 	srv := &http.Server{
