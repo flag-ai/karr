@@ -6,6 +6,9 @@ formatters:
     - goimports
 
 linters:
+  exclusions:
+    paths:
+      - "web/node_modules"
   enable:
     - errcheck
     - govet

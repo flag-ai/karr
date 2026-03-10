@@ -9,6 +9,7 @@ require (
 	github.com/jackc/pgx/v5 v5.8.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/stretchr/testify v1.11.1
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
@@ -30,5 +31,4 @@ require (
 	golang.org/x/sys v0.38.0 // indirect
 	golang.org/x/text v0.31.0 // indirect
 	google.golang.org/protobuf v1.36.8 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
