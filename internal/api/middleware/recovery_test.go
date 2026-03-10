@@ -21,7 +21,7 @@ func TestRecovery_NoPanic(t *testing.T) {
 		_, _ = w.Write([]byte("ok"))
 	}))
 
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
 	rr := httptest.NewRecorder()
 
 	handler.ServeHTTP(rr, req)
@@ -38,7 +38,7 @@ func TestRecovery_WithPanic(t *testing.T) {
 		panic("something went wrong")
 	}))
 
-	req := httptest.NewRequest(http.MethodGet, "/boom", nil)
+	req := httptest.NewRequest(http.MethodGet, "/boom", http.NoBody)
 	rr := httptest.NewRecorder()
 
 	handler.ServeHTTP(rr, req)

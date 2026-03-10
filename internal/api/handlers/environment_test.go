@@ -37,6 +37,8 @@ func (m *mockEnvironmentService) List(ctx context.Context) ([]models.Environment
 func (m *mockEnvironmentService) Get(ctx context.Context, id uuid.UUID) (models.Environment, error) {
 	return m.getFn(ctx, id)
 }
+
+//nolint:gocritic // interface compliance requires value parameter
 func (m *mockEnvironmentService) Create(ctx context.Context, input service.CreateEnvironmentInput) (models.Environment, error) {
 	return m.createFn(ctx, input)
 }
@@ -71,7 +73,7 @@ func TestEnvironmentHandler_List(t *testing.T) {
 	}
 	h := newTestEnvironmentHandler(svc)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/environments", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/environments", http.NoBody)
 	rr := httptest.NewRecorder()
 	h.List(rr, req)
 
@@ -91,7 +93,7 @@ func TestEnvironmentHandler_List_Error(t *testing.T) {
 	}
 	h := newTestEnvironmentHandler(svc)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/environments", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/environments", http.NoBody)
 	rr := httptest.NewRecorder()
 	h.List(rr, req)
 
@@ -112,8 +114,8 @@ func TestEnvironmentHandler_Get(t *testing.T) {
 	}
 	h := newTestEnvironmentHandler(svc)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/environments/"+id.String(), nil)
-	req = withChiURLParam(req, "id", id.String())
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/environments/"+id.String(), http.NoBody)
+	req = withChiURLParam(req, id.String())
 	rr := httptest.NewRecorder()
 	h.Get(rr, req)
 
@@ -124,8 +126,8 @@ func TestEnvironmentHandler_Get_InvalidID(t *testing.T) {
 	svc := &mockEnvironmentService{}
 	h := newTestEnvironmentHandler(svc)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/environments/bad", nil)
-	req = withChiURLParam(req, "id", "bad")
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/environments/bad", http.NoBody)
+	req = withChiURLParam(req, "bad")
 	rr := httptest.NewRecorder()
 	h.Get(rr, req)
 
@@ -181,8 +183,8 @@ func TestEnvironmentHandler_Start(t *testing.T) {
 	}
 	h := newTestEnvironmentHandler(svc)
 
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/environments/"+id.String()+"/start", nil)
-	req = withChiURLParam(req, "id", id.String())
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/environments/"+id.String()+"/start", http.NoBody)
+	req = withChiURLParam(req, id.String())
 	rr := httptest.NewRecorder()
 	h.Start(rr, req)
 
@@ -199,8 +201,8 @@ func TestEnvironmentHandler_Start_Error(t *testing.T) {
 	}
 	h := newTestEnvironmentHandler(svc)
 
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/environments/"+id.String()+"/start", nil)
-	req = withChiURLParam(req, "id", id.String())
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/environments/"+id.String()+"/start", http.NoBody)
+	req = withChiURLParam(req, id.String())
 	rr := httptest.NewRecorder()
 	h.Start(rr, req)
 
@@ -218,8 +220,8 @@ func TestEnvironmentHandler_Stop(t *testing.T) {
 	}
 	h := newTestEnvironmentHandler(svc)
 
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/environments/"+id.String()+"/stop", nil)
-	req = withChiURLParam(req, "id", id.String())
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/environments/"+id.String()+"/stop", http.NoBody)
+	req = withChiURLParam(req, id.String())
 	rr := httptest.NewRecorder()
 	h.Stop(rr, req)
 
@@ -237,8 +239,8 @@ func TestEnvironmentHandler_Remove(t *testing.T) {
 	}
 	h := newTestEnvironmentHandler(svc)
 
-	req := httptest.NewRequest(http.MethodDelete, "/api/v1/environments/"+id.String(), nil)
-	req = withChiURLParam(req, "id", id.String())
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/environments/"+id.String(), http.NoBody)
+	req = withChiURLParam(req, id.String())
 	rr := httptest.NewRecorder()
 	h.Remove(rr, req)
 
@@ -258,8 +260,8 @@ func TestEnvironmentHandler_Logs(t *testing.T) {
 	}
 	h := newTestEnvironmentHandler(svc)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/environments/"+id.String()+"/logs", nil)
-	req = withChiURLParam(req, "id", id.String())
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/environments/"+id.String()+"/logs", http.NoBody)
+	req = withChiURLParam(req, id.String())
 	rr := httptest.NewRecorder()
 	h.Logs(rr, req)
 

@@ -49,8 +49,8 @@ func (s *EnvironmentService) List(ctx context.Context) ([]models.Environment, er
 	}
 
 	envs := make([]models.Environment, 0, len(rows))
-	for _, row := range rows {
-		envs = append(envs, environmentFromRow(row))
+	for i := range rows {
+		envs = append(envs, environmentFromRow(rows[i]))
 	}
 	return envs, nil
 }
@@ -63,8 +63,8 @@ func (s *EnvironmentService) ListByAgent(ctx context.Context, agentID uuid.UUID)
 	}
 
 	envs := make([]models.Environment, 0, len(rows))
-	for _, row := range rows {
-		envs = append(envs, environmentFromRow(row))
+	for i := range rows {
+		envs = append(envs, environmentFromRow(rows[i]))
 	}
 	return envs, nil
 }
@@ -77,8 +77,8 @@ func (s *EnvironmentService) ListByProject(ctx context.Context, projectID uuid.U
 	}
 
 	envs := make([]models.Environment, 0, len(rows))
-	for _, row := range rows {
-		envs = append(envs, environmentFromRow(row))
+	for i := range rows {
+		envs = append(envs, environmentFromRow(rows[i]))
 	}
 	return envs, nil
 }
@@ -102,6 +102,8 @@ func (s *EnvironmentService) Get(ctx context.Context, id uuid.UUID) (models.Envi
 //  4. UpdateEnvironmentContainerID with returned container ID
 //  5. UpdateEnvironmentStatus to "stopped" (created but not started)
 //  6. If BONNIE call fails, UpdateEnvironmentStatus to "error"
+//
+//nolint:gocritic // simpler API than pointer for callers
 func (s *EnvironmentService) Create(ctx context.Context, input CreateEnvironmentInput) (models.Environment, error) {
 	name := strings.TrimSpace(input.Name)
 	if name == "" {

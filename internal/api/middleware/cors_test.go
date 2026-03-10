@@ -14,7 +14,7 @@ func TestCORS_SetsHeaders(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
 	rr := httptest.NewRecorder()
 
 	handler.ServeHTTP(rr, req)
@@ -32,7 +32,7 @@ func TestCORS_Preflight(t *testing.T) {
 		called = true
 	}))
 
-	req := httptest.NewRequest(http.MethodOptions, "/api/v1/agents", nil)
+	req := httptest.NewRequest(http.MethodOptions, "/api/v1/agents", http.NoBody)
 	rr := httptest.NewRecorder()
 
 	handler.ServeHTTP(rr, req)

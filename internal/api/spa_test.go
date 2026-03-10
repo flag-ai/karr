@@ -13,7 +13,7 @@ import (
 func TestSPAHandler_NilFS(t *testing.T) {
 	handler := api.SPAHandler(nil)
 
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
 	rr := httptest.NewRecorder()
 
 	handler.ServeHTTP(rr, req)
@@ -28,7 +28,7 @@ func TestSPAHandler_ServesIndexHTML(t *testing.T) {
 
 	handler := api.SPAHandler(fs)
 
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
 	rr := httptest.NewRecorder()
 
 	handler.ServeHTTP(rr, req)
@@ -39,13 +39,13 @@ func TestSPAHandler_ServesIndexHTML(t *testing.T) {
 
 func TestSPAHandler_ServesStaticFile(t *testing.T) {
 	fs := fstest.MapFS{
-		"index.html":        &fstest.MapFile{Data: []byte("<html>app</html>")},
-		"assets/style.css":  &fstest.MapFile{Data: []byte("body{}")},
+		"index.html":       &fstest.MapFile{Data: []byte("<html>app</html>")},
+		"assets/style.css": &fstest.MapFile{Data: []byte("body{}")},
 	}
 
 	handler := api.SPAHandler(fs)
 
-	req := httptest.NewRequest(http.MethodGet, "/assets/style.css", nil)
+	req := httptest.NewRequest(http.MethodGet, "/assets/style.css", http.NoBody)
 	rr := httptest.NewRecorder()
 
 	handler.ServeHTTP(rr, req)
@@ -62,7 +62,7 @@ func TestSPAHandler_FallbackToIndex(t *testing.T) {
 	handler := api.SPAHandler(fs)
 
 	// Client-side route that doesn't match a real file.
-	req := httptest.NewRequest(http.MethodGet, "/dashboard/settings", nil)
+	req := httptest.NewRequest(http.MethodGet, "/dashboard/settings", http.NoBody)
 	rr := httptest.NewRecorder()
 
 	handler.ServeHTTP(rr, req)

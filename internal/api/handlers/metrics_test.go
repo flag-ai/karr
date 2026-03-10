@@ -12,7 +12,7 @@ import (
 func TestMetricsHandler_Metrics(t *testing.T) {
 	h := handlers.NewMetricsHandler()
 
-	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	req := httptest.NewRequest(http.MethodGet, "/metrics", http.NoBody)
 	rr := httptest.NewRecorder()
 	h.Metrics(rr, req)
 

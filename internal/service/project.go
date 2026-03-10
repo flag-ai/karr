@@ -47,8 +47,8 @@ func (s *ProjectService) List(ctx context.Context) ([]models.Project, error) {
 	}
 
 	projects := make([]models.Project, 0, len(rows))
-	for _, row := range rows {
-		projects = append(projects, projectFromRow(row))
+	for i := range rows {
+		projects = append(projects, projectFromRow(rows[i]))
 	}
 	return projects, nil
 }

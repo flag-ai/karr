@@ -51,8 +51,8 @@ func (s *AgentService) List(ctx context.Context) ([]models.Agent, error) {
 	}
 
 	agents := make([]models.Agent, 0, len(rows))
-	for _, row := range rows {
-		a := agentFromRow(row)
+	for i := range rows {
+		a := agentFromRow(rows[i])
 		a.Token = "" // strip token from list responses
 		agents = append(agents, a)
 	}

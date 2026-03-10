@@ -26,7 +26,7 @@ func SPAHandler(spaFS fs.FS) http.HandlerFunc {
 			// File not found — serve index.html for SPA routing.
 			path = "index.html"
 		} else {
-			f.Close()
+			_ = f.Close()
 		}
 
 		http.ServeFileFS(w, r, spaFS, path)

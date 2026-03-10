@@ -62,7 +62,7 @@ func TestProjectHandler_List(t *testing.T) {
 	}
 	h := newTestProjectHandler(svc)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/projects", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/projects", http.NoBody)
 	rr := httptest.NewRecorder()
 	h.List(rr, req)
 
@@ -82,7 +82,7 @@ func TestProjectHandler_List_Error(t *testing.T) {
 	}
 	h := newTestProjectHandler(svc)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/projects", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/projects", http.NoBody)
 	rr := httptest.NewRecorder()
 	h.List(rr, req)
 
@@ -102,8 +102,8 @@ func TestProjectHandler_Get(t *testing.T) {
 	}
 	h := newTestProjectHandler(svc)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/projects/"+id.String(), nil)
-	req = withChiURLParam(req, "id", id.String())
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/projects/"+id.String(), http.NoBody)
+	req = withChiURLParam(req, id.String())
 	rr := httptest.NewRecorder()
 	h.Get(rr, req)
 
@@ -114,8 +114,8 @@ func TestProjectHandler_Get_InvalidID(t *testing.T) {
 	svc := &mockProjectService{}
 	h := newTestProjectHandler(svc)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/projects/bad", nil)
-	req = withChiURLParam(req, "id", "bad")
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/projects/bad", http.NoBody)
+	req = withChiURLParam(req, "bad")
 	rr := httptest.NewRecorder()
 	h.Get(rr, req)
 
@@ -169,7 +169,7 @@ func TestProjectHandler_Update(t *testing.T) {
 
 	body, _ := json.Marshal(service.UpdateProjectInput{Name: &newName})
 	req := httptest.NewRequest(http.MethodPut, "/api/v1/projects/"+id.String(), bytes.NewReader(body))
-	req = withChiURLParam(req, "id", id.String())
+	req = withChiURLParam(req, id.String())
 	rr := httptest.NewRecorder()
 	h.Update(rr, req)
 
@@ -187,8 +187,8 @@ func TestProjectHandler_Delete(t *testing.T) {
 	}
 	h := newTestProjectHandler(svc)
 
-	req := httptest.NewRequest(http.MethodDelete, "/api/v1/projects/"+id.String(), nil)
-	req = withChiURLParam(req, "id", id.String())
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/projects/"+id.String(), http.NoBody)
+	req = withChiURLParam(req, id.String())
 	rr := httptest.NewRecorder()
 	h.Delete(rr, req)
 

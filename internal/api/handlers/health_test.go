@@ -18,7 +18,7 @@ func TestHealthHandler_Health(t *testing.T) {
 	registry := health.NewRegistry()
 	h := handlers.NewHealthHandler(registry, logger)
 
-	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	req := httptest.NewRequest(http.MethodGet, "/health", http.NoBody)
 	rr := httptest.NewRecorder()
 
 	h.Health(rr, req)
@@ -36,7 +36,7 @@ func TestHealthHandler_Ready_NoCheckers(t *testing.T) {
 	registry := health.NewRegistry()
 	h := handlers.NewHealthHandler(registry, logger)
 
-	req := httptest.NewRequest(http.MethodGet, "/ready", nil)
+	req := httptest.NewRequest(http.MethodGet, "/ready", http.NoBody)
 	rr := httptest.NewRecorder()
 
 	h.Ready(rr, req)

@@ -33,6 +33,6 @@ func parseUUID(r *http.Request) (uuid.UUID, error) {
 
 // decodeBody decodes the JSON request body into dst.
 func decodeBody(r *http.Request, dst any) error {
-	defer r.Body.Close()
+	defer func() { _ = r.Body.Close() }()
 	return json.NewDecoder(r.Body).Decode(dst)
 }

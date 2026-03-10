@@ -50,10 +50,10 @@ func newTestAgentHandler(svc *mockAgentService) *handlers.AgentHandler {
 	return handlers.NewAgentHandler(svc, slog.Default())
 }
 
-// withChiURLParam adds a chi URL parameter to the request context.
-func withChiURLParam(r *http.Request, key, val string) *http.Request {
+// withChiURLParam adds the "id" chi URL parameter to the request context.
+func withChiURLParam(r *http.Request, val string) *http.Request {
 	rctx := chi.NewRouteContext()
-	rctx.URLParams.Add(key, val)
+	rctx.URLParams.Add("id", val)
 	return r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rctx))
 }
 
@@ -70,7 +70,7 @@ func TestAgentHandler_List(t *testing.T) {
 	}
 	h := newTestAgentHandler(svc)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/agents", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/agents", http.NoBody)
 	rr := httptest.NewRecorder()
 	h.List(rr, req)
 
@@ -90,7 +90,7 @@ func TestAgentHandler_List_Error(t *testing.T) {
 	}
 	h := newTestAgentHandler(svc)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/agents", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/agents", http.NoBody)
 	rr := httptest.NewRecorder()
 	h.List(rr, req)
 
@@ -110,8 +110,8 @@ func TestAgentHandler_Get(t *testing.T) {
 	}
 	h := newTestAgentHandler(svc)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/agents/"+id.String(), nil)
-	req = withChiURLParam(req, "id", id.String())
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/agents/"+id.String(), http.NoBody)
+	req = withChiURLParam(req, id.String())
 	rr := httptest.NewRecorder()
 	h.Get(rr, req)
 
@@ -126,8 +126,8 @@ func TestAgentHandler_Get_InvalidID(t *testing.T) {
 	svc := &mockAgentService{}
 	h := newTestAgentHandler(svc)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/agents/not-a-uuid", nil)
-	req = withChiURLParam(req, "id", "not-a-uuid")
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/agents/not-a-uuid", http.NoBody)
+	req = withChiURLParam(req, "not-a-uuid")
 	rr := httptest.NewRecorder()
 	h.Get(rr, req)
 
@@ -177,8 +177,8 @@ func TestAgentHandler_Delete(t *testing.T) {
 	}
 	h := newTestAgentHandler(svc)
 
-	req := httptest.NewRequest(http.MethodDelete, "/api/v1/agents/"+id.String(), nil)
-	req = withChiURLParam(req, "id", id.String())
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/agents/"+id.String(), http.NoBody)
+	req = withChiURLParam(req, id.String())
 	rr := httptest.NewRecorder()
 	h.Delete(rr, req)
 
@@ -200,8 +200,8 @@ func TestAgentHandler_GetStatus(t *testing.T) {
 	}
 	h := newTestAgentHandler(svc)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/agents/"+id.String()+"/status", nil)
-	req = withChiURLParam(req, "id", id.String())
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/agents/"+id.String()+"/status", http.NoBody)
+	req = withChiURLParam(req, id.String())
 	rr := httptest.NewRecorder()
 	h.GetStatus(rr, req)
 

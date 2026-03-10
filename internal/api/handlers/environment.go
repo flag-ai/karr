@@ -140,7 +140,7 @@ func (h *EnvironmentHandler) Logs(w http.ResponseWriter, r *http.Request) {
 	flusher.Flush()
 
 	err = h.service.StreamLogs(r.Context(), id, func(data string) {
-		fmt.Fprintf(w, "data: %s\n\n", data)
+		_, _ = fmt.Fprintf(w, "data: %s\n\n", data)
 		flusher.Flush()
 	})
 	if err != nil {

@@ -47,9 +47,9 @@ func (m *mockQuerier) ListAgents(ctx context.Context) ([]sqlc.KarrAgent, error) 
 	if m.listAgentsFn != nil {
 		return m.listAgentsFn(ctx)
 	}
-	var result []sqlc.KarrAgent
-	for _, a := range m.agents {
-		result = append(result, a)
+	result := make([]sqlc.KarrAgent, 0, len(m.agents))
+	for k := range m.agents {
+		result = append(result, m.agents[k])
 	}
 	return result, nil
 }
@@ -66,7 +66,8 @@ func (m *mockQuerier) GetAgent(ctx context.Context, id pgtype.UUID) (sqlc.KarrAg
 }
 
 func (m *mockQuerier) GetAgentByName(ctx context.Context, name string) (sqlc.KarrAgent, error) {
-	for _, a := range m.agents {
+	for k := range m.agents {
+		a := m.agents[k]
 		if a.Name == name {
 			return a, nil
 		}
@@ -122,7 +123,7 @@ func (m *mockQuerier) UpdateAgentStatus(ctx context.Context, arg sqlc.UpdateAgen
 }
 
 func (m *mockQuerier) ListProjects(ctx context.Context) ([]sqlc.KarrProject, error) {
-	var result []sqlc.KarrProject
+	result := make([]sqlc.KarrProject, 0, len(m.projects))
 	for _, p := range m.projects {
 		result = append(result, p)
 	}
@@ -184,18 +185,18 @@ func (m *mockQuerier) DeleteProject(ctx context.Context, id pgtype.UUID) error {
 }
 
 func (m *mockQuerier) ListEnvironments(ctx context.Context) ([]sqlc.KarrEnvironment, error) {
-	var result []sqlc.KarrEnvironment
-	for _, e := range m.environments {
-		result = append(result, e)
+	result := make([]sqlc.KarrEnvironment, 0, len(m.environments))
+	for k := range m.environments {
+		result = append(result, m.environments[k])
 	}
 	return result, nil
 }
 
 func (m *mockQuerier) ListEnvironmentsByAgent(ctx context.Context, agentID pgtype.UUID) ([]sqlc.KarrEnvironment, error) {
 	var result []sqlc.KarrEnvironment
-	for _, e := range m.environments {
-		if e.AgentID == agentID {
-			result = append(result, e)
+	for k := range m.environments {
+		if m.environments[k].AgentID == agentID {
+			result = append(result, m.environments[k])
 		}
 	}
 	return result, nil
@@ -203,9 +204,9 @@ func (m *mockQuerier) ListEnvironmentsByAgent(ctx context.Context, agentID pgtyp
 
 func (m *mockQuerier) ListEnvironmentsByProject(ctx context.Context, projectID pgtype.UUID) ([]sqlc.KarrEnvironment, error) {
 	var result []sqlc.KarrEnvironment
-	for _, e := range m.environments {
-		if e.ProjectID == projectID {
-			result = append(result, e)
+	for k := range m.environments {
+		if m.environments[k].ProjectID == projectID {
+			result = append(result, m.environments[k])
 		}
 	}
 	return result, nil
@@ -222,6 +223,7 @@ func (m *mockQuerier) GetEnvironment(ctx context.Context, id pgtype.UUID) (sqlc.
 	return e, nil
 }
 
+//nolint:gocritic // interface compliance requires value parameter
 func (m *mockQuerier) CreateEnvironment(ctx context.Context, arg sqlc.CreateEnvironmentParams) (sqlc.KarrEnvironment, error) {
 	if m.createEnvironmentFn != nil {
 		return m.createEnvironmentFn(ctx, arg)

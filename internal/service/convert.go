@@ -38,7 +38,7 @@ func timePtrFromPgTimestamptz(ts pgtype.Timestamptz) *time.Time {
 }
 
 // agentFromRow converts a sqlc.KarrAgent to a models.Agent.
-func agentFromRow(row sqlc.KarrAgent) models.Agent {
+func agentFromRow(row sqlc.KarrAgent) models.Agent { //nolint:gocritic // value receiver for clean conversion API
 	return models.Agent{
 		ID:         fromPgUUID(row.ID),
 		Name:       row.Name,
@@ -52,7 +52,7 @@ func agentFromRow(row sqlc.KarrAgent) models.Agent {
 }
 
 // projectFromRow converts a sqlc.KarrProject to a models.Project.
-func projectFromRow(row sqlc.KarrProject) models.Project {
+func projectFromRow(row sqlc.KarrProject) models.Project { //nolint:gocritic // value receiver for clean conversion API
 	return models.Project{
 		ID:          fromPgUUID(row.ID),
 		Name:        row.Name,
@@ -63,7 +63,7 @@ func projectFromRow(row sqlc.KarrProject) models.Project {
 }
 
 // environmentFromRow converts a sqlc.KarrEnvironment to a models.Environment.
-func environmentFromRow(row sqlc.KarrEnvironment) models.Environment {
+func environmentFromRow(row sqlc.KarrEnvironment) models.Environment { //nolint:gocritic // value receiver for clean conversion API
 	env := models.Environment{
 		ID:          fromPgUUID(row.ID),
 		AgentID:     fromPgUUID(row.AgentID),
