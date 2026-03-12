@@ -2,10 +2,8 @@ module github.com/flag-ai/karr
 
 go 1.25
 
-replace github.com/flag-ai/commons => ../flag-commons
-
 require (
-	github.com/flag-ai/commons v0.0.0-20260309203524-7f85750c2dda
+	github.com/flag-ai/commons v0.0.0-20260312225241-2e27c6c97e6a
 	github.com/go-chi/chi/v5 v5.2.5
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.8.0
