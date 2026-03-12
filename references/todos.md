@@ -35,6 +35,9 @@ _(none)_
 
 ## Suggestions
 
+- **Make registration token expiry configurable** — `migrations/000004_create_agent_registrations.up.sql` — hardcoded to 1 hour; should be a config parameter
+- **Add rate limiting to provision and registration endpoints** — `internal/api/router.go` — prevents registration table flooding
+- **Add `navigator.clipboard.writeText` error handling** — `web/src/components/InstallCommand.tsx:29` — clipboard API may be unavailable in non-HTTPS contexts
 - **Add token rotation/expiration for agent tokens** — no expiry or audit trail currently
 - **Use GitHub Secrets for CI test credentials** — `.github/workflows/ci.yml:58` — hardcoded test password
 - **Run health check immediately on startup** — `internal/bonnie/registry.go:120` — agents show stale status for up to 30s

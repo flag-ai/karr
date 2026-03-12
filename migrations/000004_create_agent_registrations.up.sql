@@ -8,3 +8,7 @@ CREATE TABLE karr_agent_registrations (
     claimed_at  TIMESTAMPTZ,
     expires_at  TIMESTAMPTZ NOT NULL DEFAULT now() + INTERVAL '1 hour'
 );
+
+CREATE INDEX idx_registrations_pending_expires
+    ON karr_agent_registrations (expires_at)
+    WHERE status = 'pending';
