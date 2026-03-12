@@ -69,6 +69,8 @@ All configuration is via environment variables (or OpenBao secrets):
 | `KARR_DEFAULT_AGENT_URL` | No | — | Auto-register a BONNIE agent on startup |
 | `KARR_DEFAULT_AGENT_TOKEN` | No | — | Bearer token for the default agent |
 | `KARR_CORS_ORIGINS` | No | — | Comma-separated allowed CORS origins |
+| `POSTGRES_PASSWORD` | docker-compose | — | PostgreSQL password (required for docker-compose) |
+| `GF_ADMIN_PASSWORD` | docker-compose | — | Grafana admin password (required for docker-compose) |
 
 See `.env.example` for all options.
 
@@ -115,13 +117,23 @@ make build-web     # Build frontend
 make docker        # Docker compose build
 ```
 
+### Hot Reload (Air)
+
+For backend development with automatic rebuilds on file changes, use the dev container overlay:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+```
+
+This uses [Air](https://github.com/air-verse/air) to watch for Go, SQL, and YAML file changes and automatically rebuild and restart the server. The source directory is bind-mounted into the container, so edits take effect without rebuilding the image. Run the frontend dev server separately with `cd web && npm run dev`.
+
 ## Full Stack (Docker)
 
 ```bash
 docker compose up
 ```
 
-Dashboard at `http://localhost:8080`, Prometheus at `http://localhost:9090`, Grafana at `http://localhost:3000`.
+Dashboard at `http://localhost:8080`, Prometheus at `http://localhost:9090`, Grafana at `http://localhost:3000`. Grafana is pre-provisioned with a KARR Overview dashboard, Prometheus datasource, and auto-discovery of dashboards from `grafana/dashboards/`.
 
 ## License
 
