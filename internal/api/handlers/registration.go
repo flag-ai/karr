@@ -79,10 +79,11 @@ func (h *RegistrationHandler) Delete(w http.ResponseWriter, r *http.Request) {
 }
 
 // detectServerURL auto-detects the server base URL from request headers.
+// Only accepts "http" or "https" as the scheme from X-Forwarded-Proto.
 func detectServerURL(r *http.Request) string {
 	scheme := "http"
-	if proto := r.Header.Get("X-Forwarded-Proto"); proto != "" {
-		scheme = proto
+	if proto := r.Header.Get("X-Forwarded-Proto"); proto == "https" {
+		scheme = "https"
 	} else if r.TLS != nil {
 		scheme = "https"
 	}

@@ -156,8 +156,8 @@ func serve() error {
 	}
 
 	// Register callback — delegates to the registration service.
-	registerCb := func(req install.RegisterRequest, sourceIP string) (install.RegisterResult, error) {
-		agent, err := regSvc.Register(ctx, req.RegistrationToken, sourceIP, req.Port, req.AuthToken, req.Address)
+	registerCb := func(reqCtx context.Context, req install.RegisterRequest, sourceIP string) (install.RegisterResult, error) {
+		agent, err := regSvc.Register(reqCtx, req.RegistrationToken, sourceIP, req.Port, req.AuthToken, req.Address)
 		if err != nil {
 			return install.RegisterResult{}, err
 		}

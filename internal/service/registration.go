@@ -38,7 +38,7 @@ type ProvisionResult struct {
 // RegistrationServicer defines the handler-facing interface for registration operations.
 type RegistrationServicer interface {
 	Provision(ctx context.Context, label, serverURL string) (ProvisionResult, error)
-	Register(ctx context.Context, tokenPlain string, sourceIP string, port int, authToken string, address string) (models.Agent, error)
+	Register(ctx context.Context, tokenPlain, sourceIP string, port int, authToken, address string) (models.Agent, error)
 	List(ctx context.Context) ([]AgentRegistration, error)
 	Delete(ctx context.Context, id uuid.UUID) error
 }
@@ -67,7 +67,9 @@ func (s *RegistrationService) Provision(ctx context.Context, label, serverURL st
 	}
 
 	// Clean up expired registrations while we're here.
-	_ = s.queries.CleanExpiredRegistrations(ctx)
+	if err := s.queries.CleanExpiredRegistrations(ctx); err != nil {
+		s.logger.Warn("failed to clean expired registrations", "error", err)
+	}
 
 	// Generate a random token.
 	tokenBytes := make([]byte, 32)
@@ -104,7 +106,7 @@ func (s *RegistrationService) Provision(ctx context.Context, label, serverURL st
 }
 
 // Register validates a registration token, creates the agent, and claims the registration.
-func (s *RegistrationService) Register(ctx context.Context, tokenPlain string, sourceIP string, port int, authToken string, address string) (models.Agent, error) {
+func (s *RegistrationService) Register(ctx context.Context, tokenPlain, sourceIP string, port int, authToken, address string) (models.Agent, error) {
 	// Hash the incoming token to match against stored hash.
 	hash := sha256.Sum256([]byte(tokenPlain))
 	tokenHash := hex.EncodeToString(hash[:])
@@ -164,7 +166,9 @@ func (s *RegistrationService) Register(ctx context.Context, tokenPlain string, s
 // List returns all registration records.
 func (s *RegistrationService) List(ctx context.Context) ([]AgentRegistration, error) {
 	// Clean up expired registrations.
-	_ = s.queries.CleanExpiredRegistrations(ctx)
+	if err := s.queries.CleanExpiredRegistrations(ctx); err != nil {
+		s.logger.Warn("failed to clean expired registrations", "error", err)
+	}
 
 	rows, err := s.queries.ListRegistrations(ctx)
 	if err != nil {
