@@ -2,28 +2,58 @@ services:
   postgres:
     image: postgres:17-alpine
     environment:
-      POSTGRES_DB: karr
-      POSTGRES_USER: karr
-      POSTGRES_PASSWORD: karr-dev
+      POSTGRES_DB: ${POSTGRES_DB:-karr}
+      POSTGRES_USER: ${POSTGRES_USER:-karr}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U karr"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-karr}"]
       interval: 5s
       timeout: 5s
       retries: 5
 
   karr:
-    build: .
+    build:
+      context: .
+      args:
+        VERSION: dev
+        COMMIT: local
+        BUILD_DATE: "2024-01-01"
     ports:
       - "8080:8080"
     environment:
-      DATABASE_URL: postgres://karr:karr-dev@postgres:5432/karr?sslmode=disable
+      DATABASE_URL: postgres://${POSTGRES_USER:-karr}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-karr}?sslmode=disable
+      KARR_DEFAULT_AGENT_URL: ${KARR_DEFAULT_AGENT_URL:-}
+      KARR_DEFAULT_AGENT_TOKEN: ${KARR_DEFAULT_AGENT_TOKEN:-}
+      KARR_CORS_ORIGINS: ${KARR_CORS_ORIGINS:-}
     depends_on:
       postgres:
         condition: service_healthy
+
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on:
+      - karr
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GF_ADMIN_PASSWORD:?Set GF_ADMIN_PASSWORD in .env}
+    volumes:
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
 
 volumes:
   pgdata:

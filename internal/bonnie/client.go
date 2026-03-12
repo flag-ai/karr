@@ -1,0 +1,299 @@
+package bonnie
+
+import (
+	"bufio"
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"strings"
+	"time"
+)
+
+// Client defines operations available against a BONNIE agent.
+type Client interface {
+	// SystemInfo returns host system info.
+	SystemInfo(ctx context.Context) (*SystemInfoResponse, error)
+	// GPUStatus returns GPU snapshot.
+	GPUStatus(ctx context.Context) (*GPUSnapshot, error)
+	// ListContainers returns all containers on the host.
+	ListContainers(ctx context.Context) ([]ContainerInfo, error)
+	// CreateContainer creates a new container.
+	CreateContainer(ctx context.Context, req *CreateContainerRequest) (string, error)
+	// StartContainer starts a container.
+	StartContainer(ctx context.Context, id string) error
+	// StopContainer stops a container.
+	StopContainer(ctx context.Context, id string) error
+	// RestartContainer restarts a container.
+	RestartContainer(ctx context.Context, id string) error
+	// RemoveContainer removes a container.
+	RemoveContainer(ctx context.Context, id string) error
+	// StreamLogs streams container logs via SSE. The callback receives each log line.
+	StreamLogs(ctx context.Context, id string, callback func(data string)) error
+	// Health checks if the agent is reachable.
+	Health(ctx context.Context) error
+}
+
+type httpClient struct {
+	baseURL    string
+	token      string
+	httpClient *http.Client
+}
+
+// NewClient creates a new BONNIE HTTP client.
+func NewClient(baseURL, token string) Client {
+	return &httpClient{
+		baseURL: baseURL,
+		token:   token,
+		httpClient: &http.Client{
+			Timeout: 30 * time.Second,
+		},
+	}
+}
+
+func (c *httpClient) do(ctx context.Context, method, path string, body io.Reader) (*http.Response, error) {
+	reqURL, err := url.JoinPath(c.baseURL, path)
+	if err != nil {
+		return nil, fmt.Errorf("bonnie: build url: %w", err)
+	}
+
+	// Buffer body so retries can replay it.
+	var bodyBytes []byte
+	if body != nil {
+		bodyBytes, err = io.ReadAll(body)
+		if err != nil {
+			return nil, fmt.Errorf("bonnie: read request body: %w", err)
+		}
+	}
+
+	// Only retry idempotent methods to avoid duplicate side effects.
+	maxAttempts := 1
+	if method == http.MethodGet || method == http.MethodHead || method == http.MethodDelete {
+		maxAttempts = 3
+	}
+
+	var lastErr error
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		var reqBody io.Reader
+		if bodyBytes != nil {
+			reqBody = bytes.NewReader(bodyBytes)
+		}
+
+		req, err := http.NewRequestWithContext(ctx, method, reqURL, reqBody)
+		if err != nil {
+			return nil, fmt.Errorf("bonnie: create request: %w", err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		if c.token != "" {
+			req.Header.Set("Authorization", "Bearer "+c.token)
+		}
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			lastErr = err
+			// Exponential backoff: 500ms, 1s, 2s
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(time.Duration(500<<uint(attempt)) * time.Millisecond):
+			}
+			continue
+		}
+
+		return resp, nil
+	}
+	return nil, fmt.Errorf("bonnie: request failed after %d attempts: %w", maxAttempts, lastErr)
+}
+
+// Health implements Client.
+func (c *httpClient) Health(ctx context.Context) error {
+	resp, err := c.do(ctx, http.MethodGet, "/health", nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode >= 300 {
+		return fmt.Errorf("bonnie: health check returned %d", resp.StatusCode)
+	}
+	return nil
+}
+
+// checkStatus verifies the response status code and returns a descriptive error
+// for non-2xx responses.
+func checkStatus(resp *http.Response, operation string) error {
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return nil
+	}
+	body, _ := io.ReadAll(resp.Body)
+	return fmt.Errorf("bonnie: %s returned %d: %s", operation, resp.StatusCode, string(body))
+}
+
+// SystemInfo implements Client.
+func (c *httpClient) SystemInfo(ctx context.Context) (*SystemInfoResponse, error) {
+	resp, err := c.do(ctx, http.MethodGet, "/api/v1/system/info", nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if err := checkStatus(resp, "system info"); err != nil {
+		return nil, err
+	}
+
+	var result SystemInfoResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("bonnie: decode system info: %w", err)
+	}
+	return &result, nil
+}
+
+// GPUStatus implements Client.
+func (c *httpClient) GPUStatus(ctx context.Context) (*GPUSnapshot, error) {
+	resp, err := c.do(ctx, http.MethodGet, "/api/v1/gpu/status", nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if err := checkStatus(resp, "gpu status"); err != nil {
+		return nil, err
+	}
+
+	var result GPUSnapshot
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("bonnie: decode gpu status: %w", err)
+	}
+	return &result, nil
+}
+
+// ListContainers implements Client.
+func (c *httpClient) ListContainers(ctx context.Context) ([]ContainerInfo, error) {
+	resp, err := c.do(ctx, http.MethodGet, "/api/v1/containers", nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if err := checkStatus(resp, "list containers"); err != nil {
+		return nil, err
+	}
+
+	var result []ContainerInfo
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("bonnie: decode containers: %w", err)
+	}
+	return result, nil
+}
+
+// CreateContainer implements Client.
+func (c *httpClient) CreateContainer(ctx context.Context, req *CreateContainerRequest) (string, error) {
+	body, err := json.Marshal(req)
+	if err != nil {
+		return "", fmt.Errorf("bonnie: marshal request: %w", err)
+	}
+
+	resp, err := c.do(ctx, http.MethodPost, "/api/v1/containers", bytes.NewReader(body))
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		respBody, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("bonnie: create container returned %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var result map[string]string
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", fmt.Errorf("bonnie: decode create response: %w", err)
+	}
+	return result["id"], nil
+}
+
+func (c *httpClient) containerAction(ctx context.Context, id, action string) error {
+	resp, err := c.do(ctx, http.MethodPost, "/api/v1/containers/"+id+"/"+action, http.NoBody)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode >= 300 {
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("bonnie: %s container returned %d: %s", action, resp.StatusCode, string(respBody))
+	}
+	return nil
+}
+
+// StartContainer implements Client.
+func (c *httpClient) StartContainer(ctx context.Context, id string) error {
+	return c.containerAction(ctx, id, "start")
+}
+
+// StopContainer implements Client.
+func (c *httpClient) StopContainer(ctx context.Context, id string) error {
+	return c.containerAction(ctx, id, "stop")
+}
+
+// RestartContainer implements Client.
+func (c *httpClient) RestartContainer(ctx context.Context, id string) error {
+	return c.containerAction(ctx, id, "restart")
+}
+
+// RemoveContainer implements Client.
+func (c *httpClient) RemoveContainer(ctx context.Context, id string) error {
+	resp, err := c.do(ctx, http.MethodDelete, "/api/v1/containers/"+id, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode >= 300 {
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("bonnie: remove container returned %d: %s", resp.StatusCode, string(respBody))
+	}
+	return nil
+}
+
+// StreamLogs implements Client.
+func (c *httpClient) StreamLogs(ctx context.Context, id string, callback func(data string)) error {
+	logURL, err := url.JoinPath(c.baseURL, "/api/v1/containers/"+id+"/logs")
+	if err != nil {
+		return fmt.Errorf("bonnie: build log url: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, logURL, http.NoBody)
+	if err != nil {
+		return fmt.Errorf("bonnie: create log request: %w", err)
+	}
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
+	req.Header.Set("Accept", "text/event-stream")
+
+	// Use a transport with idle timeout for streaming instead of an unbounded client.
+	streamClient := &http.Client{
+		Timeout: 5 * time.Minute,
+	}
+	resp, err := streamClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("bonnie: log stream: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	// Read SSE events line by line.
+	scanner := bufio.NewScanner(resp.Body)
+	for scanner.Scan() {
+		if ctx.Err() != nil {
+			return nil
+		}
+		line := scanner.Text()
+		if strings.HasPrefix(line, "data: ") {
+			callback(strings.TrimPrefix(line, "data: "))
+		}
+	}
+	if err := scanner.Err(); err != nil && ctx.Err() == nil {
+		return err
+	}
+	return nil
+}
