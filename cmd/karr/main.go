@@ -20,6 +20,7 @@ import (
 	"github.com/flag-ai/commons/version"
 
 	"github.com/flag-ai/karr/internal/api"
+	"github.com/flag-ai/karr/internal/api/handlers"
 	"github.com/flag-ai/karr/internal/bonnie"
 	"github.com/flag-ai/karr/internal/config"
 	"github.com/flag-ai/karr/internal/db"
@@ -131,6 +132,7 @@ func serve() error {
 	// Health registry
 	healthRegistry := health.NewRegistry()
 	healthRegistry.Register(health.NewDatabaseChecker(pool))
+	healthRegistry.Register(handlers.NewBonnieChecker(registry))
 
 	// Build router
 	router := api.NewRouter(&api.RouterConfig{
