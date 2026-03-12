@@ -2,6 +2,7 @@ import type {
   Agent, CreateAgentRequest, AgentStatus,
   Project, CreateProjectRequest, UpdateProjectRequest,
   Environment, CreateEnvironmentRequest,
+  ProvisionRequest, ProvisionResponse, AgentRegistration,
 } from './types'
 
 const BASE = '/api/v1'
@@ -29,6 +30,11 @@ export const api = {
   deleteAgent: (id: string) =>
     request<void>(`/agents/${id}`, { method: 'DELETE' }),
   getAgentStatus: (id: string) => request<AgentStatus>(`/agents/${id}/status`),
+  provisionAgent: (data: ProvisionRequest) =>
+    request<ProvisionResponse>('/agents/provision', { method: 'POST', body: JSON.stringify(data) }),
+  listRegistrations: () => request<AgentRegistration[]>('/agents/registrations'),
+  deleteRegistration: (id: string) =>
+    request<void>(`/agents/registrations/${id}`, { method: 'DELETE' }),
 
   // Projects
   listProjects: () => request<Project[]>('/projects'),

@@ -33,4 +33,11 @@ type Querier interface {
 	UpdateEnvironmentStatus(ctx context.Context, arg sqlc.UpdateEnvironmentStatusParams) error
 	UpdateEnvironmentContainerID(ctx context.Context, arg sqlc.UpdateEnvironmentContainerIDParams) error
 	DeleteEnvironment(ctx context.Context, id pgtype.UUID) error
+
+	CreateAgentRegistration(ctx context.Context, arg sqlc.CreateAgentRegistrationParams) (sqlc.KarrAgentRegistration, error)
+	GetPendingRegistration(ctx context.Context, tokenHash string) (sqlc.KarrAgentRegistration, error)
+	ClaimRegistration(ctx context.Context, arg sqlc.ClaimRegistrationParams) error
+	ListRegistrations(ctx context.Context) ([]sqlc.KarrAgentRegistration, error)
+	DeleteRegistration(ctx context.Context, id pgtype.UUID) error
+	CleanExpiredRegistrations(ctx context.Context) error
 }

@@ -280,6 +280,36 @@ func (m *mockQuerier) DeleteEnvironment(ctx context.Context, id pgtype.UUID) err
 	return nil
 }
 
+func (m *mockQuerier) CreateAgentRegistration(_ context.Context, arg sqlc.CreateAgentRegistrationParams) (sqlc.KarrAgentRegistration, error) {
+	id := uuid.New()
+	return sqlc.KarrAgentRegistration{
+		ID:        toPgUUID(id),
+		TokenHash: arg.TokenHash,
+		Label:     arg.Label,
+		Status:    "pending",
+	}, nil
+}
+
+func (m *mockQuerier) GetPendingRegistration(_ context.Context, _ string) (sqlc.KarrAgentRegistration, error) {
+	return sqlc.KarrAgentRegistration{}, fmt.Errorf("not found")
+}
+
+func (m *mockQuerier) ClaimRegistration(_ context.Context, _ sqlc.ClaimRegistrationParams) error {
+	return nil
+}
+
+func (m *mockQuerier) ListRegistrations(_ context.Context) ([]sqlc.KarrAgentRegistration, error) {
+	return nil, nil
+}
+
+func (m *mockQuerier) DeleteRegistration(_ context.Context, _ pgtype.UUID) error {
+	return nil
+}
+
+func (m *mockQuerier) CleanExpiredRegistrations(_ context.Context) error {
+	return nil
+}
+
 // mockBonnieClient implements bonnie.Client for testing.
 type mockBonnieClient struct {
 	systemInfoFn      func(ctx context.Context) (*bonnie.SystemInfoResponse, error)

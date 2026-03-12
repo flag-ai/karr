@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net"
 	"net/http"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/flag-ai/commons/database"
 	"github.com/flag-ai/commons/health"
+	"github.com/flag-ai/commons/install"
 	"github.com/flag-ai/commons/secrets"
 	"github.com/flag-ai/commons/version"
 
@@ -26,6 +28,7 @@ import (
 	"github.com/flag-ai/karr/internal/db"
 	"github.com/flag-ai/karr/internal/db/sqlc"
 	"github.com/flag-ai/karr/internal/service"
+	"github.com/flag-ai/karr/web"
 )
 
 func main() {
@@ -128,20 +131,54 @@ func serve() error {
 	agentSvc := service.NewAgentService(queries, registry, logger)
 	projectSvc := service.NewProjectService(queries, logger)
 	envSvc := service.NewEnvironmentService(queries, registry, logger)
+	regSvc := service.NewRegistrationService(queries, registry, logger)
 
 	// Health registry
 	healthRegistry := health.NewRegistry()
 	healthRegistry.Register(health.NewDatabaseChecker(pool))
 	healthRegistry.Register(handlers.NewBonnieChecker(registry))
 
+	// Embedded SPA frontend
+	spaFS, err := fs.Sub(web.Dist, "dist")
+	if err != nil {
+		return fmt.Errorf("embedded SPA filesystem: %w", err)
+	}
+
+	// Install script config — validates token from query string.
+	installCfg := &install.HandlerConfig{
+		GenerateToken: func(r *http.Request) (string, error) {
+			token := r.URL.Query().Get("token")
+			if token == "" {
+				return "", fmt.Errorf("missing token parameter")
+			}
+			return token, nil
+		},
+	}
+
+	// Register callback — delegates to the registration service.
+	registerCb := func(reqCtx context.Context, req install.RegisterRequest, sourceIP string) (install.RegisterResult, error) {
+		agent, err := regSvc.Register(reqCtx, req.RegistrationToken, sourceIP, req.Port, req.AuthToken, req.Address)
+		if err != nil {
+			return install.RegisterResult{}, err
+		}
+		return install.RegisterResult{
+			AgentID: agent.ID.String(),
+			Message: "agent registered successfully",
+		}, nil
+	}
+
 	// Build router
 	router := api.NewRouter(&api.RouterConfig{
-		Logger:             logger,
-		HealthRegistry:     healthRegistry,
-		AgentService:       agentSvc,
-		ProjectService:     projectSvc,
-		EnvironmentService: envSvc,
-		CORSOrigins:        cfg.CORSOrigins,
+		Logger:              logger,
+		HealthRegistry:      healthRegistry,
+		AgentService:        agentSvc,
+		ProjectService:      projectSvc,
+		EnvironmentService:  envSvc,
+		RegistrationService: regSvc,
+		InstallScriptCfg:    installCfg,
+		RegisterCallback:    registerCb,
+		SPAFS:               spaFS,
+		CORSOrigins:         cfg.CORSOrigins,
 	})
 
 	srv := &http.Server{
