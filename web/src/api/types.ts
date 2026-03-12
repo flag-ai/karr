@@ -14,6 +14,27 @@ export interface CreateAgentRequest {
   token: string
 }
 
+export interface ProvisionRequest {
+  label: string
+}
+
+export interface ProvisionResponse {
+  id: string
+  token: string
+  install_command: string
+  expires_at: string
+}
+
+export interface AgentRegistration {
+  id: string
+  label: string
+  status: 'pending' | 'claimed' | 'expired'
+  agent_id?: string
+  created_at: string
+  claimed_at?: string
+  expires_at: string
+}
+
 export interface GPUInfo {
   index: number
   name: string
