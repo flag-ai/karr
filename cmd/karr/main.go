@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net"
 	"net/http"
@@ -26,6 +27,7 @@ import (
 	"github.com/flag-ai/karr/internal/db"
 	"github.com/flag-ai/karr/internal/db/sqlc"
 	"github.com/flag-ai/karr/internal/service"
+	"github.com/flag-ai/karr/web"
 )
 
 func main() {
@@ -134,6 +136,12 @@ func serve() error {
 	healthRegistry.Register(health.NewDatabaseChecker(pool))
 	healthRegistry.Register(handlers.NewBonnieChecker(registry))
 
+	// Embedded SPA frontend
+	spaFS, err := fs.Sub(web.Dist, "dist")
+	if err != nil {
+		return fmt.Errorf("embedded SPA filesystem: %w", err)
+	}
+
 	// Build router
 	router := api.NewRouter(&api.RouterConfig{
 		Logger:             logger,
@@ -141,6 +149,7 @@ func serve() error {
 		AgentService:       agentSvc,
 		ProjectService:     projectSvc,
 		EnvironmentService: envSvc,
+		SPAFS:              spaFS,
 		CORSOrigins:        cfg.CORSOrigins,
 	})
 
