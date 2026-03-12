@@ -1,6 +1,10 @@
 # KARR
 
-**Kirizan's AI Refinement Runtime** — the model creation and fine-tuning workbench in the FLAG platform. KARR provides a web UI for managing AI development environments across BONNIE-managed GPU hosts.
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+
+**Kirizan's AI Refinement Runtime** — the model creation and fine-tuning workbench in the [FLAG (Foundation for Local AI Governance)](https://github.com/flag-ai) platform. KARR provides a web UI for managing AI development environments across BONNIE-managed GPU hosts.
+
+KARR is one of several FLAG components that work together to provide a self-hosted AI infrastructure stack. [BONNIE](https://github.com/flag-ai/bonnie) agents run on GPU hosts, [KITT](https://github.com/flag-ai/kitt) handles inference benchmarking, and [DEVON](https://github.com/flag-ai/devon) manages model discovery. All components share infrastructure patterns via [flag-commons](https://github.com/flag-ai/commons).
 
 ## Architecture
 
@@ -26,6 +30,7 @@ KARR never touches hardware directly — all GPU/container operations go through
 - **Shared libraries:** [flag-commons](https://github.com/flag-ai/commons)
 - **Containerization:** Docker multi-stage build (Alpine)
 - **Monitoring:** Prometheus metrics at `/metrics`
+- **Theme:** [Catppuccin Mocha](https://github.com/catppuccin/catppuccin)
 
 ## Prerequisites
 
