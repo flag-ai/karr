@@ -19,6 +19,17 @@ type KarrAgent struct {
 	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
 }
 
+type KarrAgentRegistration struct {
+	ID        pgtype.UUID        `json:"id"`
+	TokenHash string             `json:"token_hash"`
+	Label     string             `json:"label"`
+	Status    string             `json:"status"`
+	AgentID   pgtype.UUID        `json:"agent_id"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	ClaimedAt pgtype.Timestamptz `json:"claimed_at"`
+	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
+}
+
 type KarrEnvironment struct {
 	ID          pgtype.UUID        `json:"id"`
 	ProjectID   pgtype.UUID        `json:"project_id"`
