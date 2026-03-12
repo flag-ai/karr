@@ -69,8 +69,14 @@ func (c *httpClient) do(ctx context.Context, method, path string, body io.Reader
 		}
 	}
 
+	// Only retry idempotent methods to avoid duplicate side effects.
+	maxAttempts := 1
+	if method == http.MethodGet || method == http.MethodHead || method == http.MethodDelete {
+		maxAttempts = 3
+	}
+
 	var lastErr error
-	for attempt := 0; attempt < 3; attempt++ {
+	for attempt := 0; attempt < maxAttempts; attempt++ {
 		var reqBody io.Reader
 		if bodyBytes != nil {
 			reqBody = bytes.NewReader(bodyBytes)
@@ -99,7 +105,7 @@ func (c *httpClient) do(ctx context.Context, method, path string, body io.Reader
 
 		return resp, nil
 	}
-	return nil, fmt.Errorf("bonnie: request failed after 3 attempts: %w", lastErr)
+	return nil, fmt.Errorf("bonnie: request failed after %d attempts: %w", maxAttempts, lastErr)
 }
 
 // Health implements Client.
@@ -115,6 +121,16 @@ func (c *httpClient) Health(ctx context.Context) error {
 	return nil
 }
 
+// checkStatus verifies the response status code and returns a descriptive error
+// for non-2xx responses.
+func checkStatus(resp *http.Response, operation string) error {
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return nil
+	}
+	body, _ := io.ReadAll(resp.Body)
+	return fmt.Errorf("bonnie: %s returned %d: %s", operation, resp.StatusCode, string(body))
+}
+
 // SystemInfo implements Client.
 func (c *httpClient) SystemInfo(ctx context.Context) (*SystemInfoResponse, error) {
 	resp, err := c.do(ctx, http.MethodGet, "/api/v1/system/info", nil)
@@ -122,6 +138,10 @@ func (c *httpClient) SystemInfo(ctx context.Context) (*SystemInfoResponse, error
 		return nil, err
 	}
 	defer func() { _ = resp.Body.Close() }()
+
+	if err := checkStatus(resp, "system info"); err != nil {
+		return nil, err
+	}
 
 	var result SystemInfoResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
@@ -138,6 +158,10 @@ func (c *httpClient) GPUStatus(ctx context.Context) (*GPUSnapshot, error) {
 	}
 	defer func() { _ = resp.Body.Close() }()
 
+	if err := checkStatus(resp, "gpu status"); err != nil {
+		return nil, err
+	}
+
 	var result GPUSnapshot
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, fmt.Errorf("bonnie: decode gpu status: %w", err)
@@ -152,6 +176,10 @@ func (c *httpClient) ListContainers(ctx context.Context) ([]ContainerInfo, error
 		return nil, err
 	}
 	defer func() { _ = resp.Body.Close() }()
+
+	if err := checkStatus(resp, "list containers"); err != nil {
+		return nil, err
+	}
 
 	var result []ContainerInfo
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {

@@ -8,13 +8,14 @@
   "links": [],
   "panels": [
     {
-      "title": "HTTP Request Rate",
+      "title": "Prometheus Scrape Rate",
+      "description": "Rate of Prometheus scrape requests to /metrics. Custom HTTP request metrics will be added in a future phase.",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
-          "color": { "fixedColor": "#89b4fa", "mode": "fixed" },
+          "color": { "mode": "palette-classic" },
           "custom": {
             "lineWidth": 2,
             "fillOpacity": 10,
@@ -34,28 +35,93 @@
       ]
     },
     {
-      "title": "HTTP Request Duration (p95)",
-      "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "title": "Go Info",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
-          "color": { "fixedColor": "#cba6f7", "mode": "fixed" },
+          "color": { "fixedColor": "#89b4fa", "mode": "fixed" },
+          "mappings": [
+            { "type": "value", "options": { "1": { "text": "Running", "color": "#a6e3a1" } } }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "name"
+      },
+      "targets": [
+        {
+          "expr": "go_info",
+          "legendFormat": "Go {{version}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "OS Threads",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "fixedColor": "#94e2d5", "mode": "fixed" },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "textMode": "value_and_name"
+      },
+      "targets": [
+        {
+          "expr": "go_threads",
+          "legendFormat": "Threads",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Process Open FDs",
+      "type": "timeseries",
+      "gridPos": { "h": 4, "w": 12, "x": 12, "y": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
           "custom": {
             "lineWidth": 2,
             "fillOpacity": 10,
             "gradientMode": "scheme",
             "showPoints": "never"
           },
-          "unit": "s"
+          "unit": "short"
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "open" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "#89b4fa", "mode": "fixed" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "max" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "#585b70", "mode": "fixed" } }, { "id": "custom.lineStyle", "value": { "fill": "dash", "dash": [10, 10] } }]
+          }
+        ]
       },
       "targets": [
         {
-          "expr": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))",
-          "legendFormat": "p95",
+          "expr": "process_open_fds",
+          "legendFormat": "open",
           "refId": "A"
+        },
+        {
+          "expr": "process_max_fds",
+          "legendFormat": "max",
+          "refId": "B"
         }
       ]
     },
@@ -151,38 +217,33 @@
       ]
     },
     {
-      "title": "BONNIE Agent Status",
-      "type": "stat",
+      "title": "Process Memory (RSS)",
+      "type": "timeseries",
       "gridPos": { "h": 4, "w": 12, "x": 0, "y": 16 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              { "color": "#f38ba8", "value": null },
-              { "color": "#a6e3a1", "value": 1 }
-            ]
+          "color": { "fixedColor": "#cba6f7", "mode": "fixed" },
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "gradientMode": "scheme",
+            "showPoints": "never"
           },
-          "unit": "short"
+          "unit": "bytes"
         },
         "overrides": []
       },
-      "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "textMode": "value_and_name"
-      },
       "targets": [
         {
-          "expr": "karr_agents_online",
-          "legendFormat": "Online Agents",
+          "expr": "process_resident_memory_bytes",
+          "legendFormat": "RSS",
           "refId": "A"
         }
       ]
     },
     {
-      "title": "Database Connections",
+      "title": "Process CPU Usage",
       "type": "timeseries",
       "gridPos": { "h": 4, "w": 12, "x": 12, "y": 16 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
@@ -201,8 +262,8 @@
       },
       "targets": [
         {
-          "expr": "go_sql_open_connections",
-          "legendFormat": "open",
+          "expr": "rate(process_cpu_seconds_total[5m])",
+          "legendFormat": "CPU cores",
           "refId": "A"
         }
       ]
@@ -217,5 +278,5 @@
   "timezone": "browser",
   "title": "KARR Overview",
   "uid": "karr-overview",
-  "version": 1
+  "version": 2
 }

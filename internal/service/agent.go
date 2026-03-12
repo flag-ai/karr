@@ -114,14 +114,14 @@ func (s *AgentService) Create(ctx context.Context, input CreateAgentInput) (mode
 	return agent, nil
 }
 
-// Delete removes an agent from the registry and database.
+// Delete removes an agent from the database and registry.
 func (s *AgentService) Delete(ctx context.Context, id uuid.UUID) error {
-	// Unregister from BONNIE client registry first.
-	s.registry.Unregister(id)
-
 	if err := s.queries.DeleteAgent(ctx, toPgUUID(id)); err != nil {
 		return fmt.Errorf("delete agent %s: %w", id, err)
 	}
+
+	// Unregister from BONNIE client registry after successful DB delete.
+	s.registry.Unregister(id)
 
 	s.logger.Info("agent deleted", slog.String("id", id.String()))
 	return nil

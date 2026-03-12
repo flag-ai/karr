@@ -56,7 +56,7 @@ func (h *AgentHandler) Get(w http.ResponseWriter, r *http.Request) {
 // Create registers a new agent.
 func (h *AgentHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var req service.CreateAgentInput
-	if err := decodeBody(r, &req); err != nil {
+	if err := decodeBody(w, r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}

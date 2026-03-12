@@ -56,7 +56,7 @@ func (h *ProjectHandler) Get(w http.ResponseWriter, r *http.Request) {
 // Create adds a new project.
 func (h *ProjectHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var req service.CreateProjectInput
-	if err := decodeBody(r, &req); err != nil {
+	if err := decodeBody(w, r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
@@ -84,7 +84,7 @@ func (h *ProjectHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req service.UpdateProjectInput
-	if err := decodeBody(r, &req); err != nil {
+	if err := decodeBody(w, r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}

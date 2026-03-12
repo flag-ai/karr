@@ -38,8 +38,13 @@ func parseUUID(r *http.Request) (uuid.UUID, error) {
 	return uuid.Parse(raw)
 }
 
+// maxBodySize is the maximum allowed request body size (1 MiB).
+const maxBodySize = 1 << 20
+
 // decodeBody decodes the JSON request body into dst.
-func decodeBody(r *http.Request, dst any) error {
+// Limits the body to maxBodySize to prevent memory exhaustion.
+func decodeBody(w http.ResponseWriter, r *http.Request, dst any) error {
+	r.Body = http.MaxBytesReader(w, r.Body, maxBodySize)
 	defer func() { _ = r.Body.Close() }()
 	return json.NewDecoder(r.Body).Decode(dst)
 }

@@ -58,7 +58,7 @@ func (h *EnvironmentHandler) Get(w http.ResponseWriter, r *http.Request) {
 // Create provisions a new environment.
 func (h *EnvironmentHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var input service.CreateEnvironmentInput
-	if err := decodeBody(r, &input); err != nil {
+	if err := decodeBody(w, r, &input); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
@@ -86,6 +86,10 @@ func (h *EnvironmentHandler) Start(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.service.Start(r.Context(), id); err != nil {
+		if isNotFound(err) {
+			writeError(w, http.StatusNotFound, "environment not found")
+			return
+		}
 		h.logger.Error("start environment", "id", id, "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to start environment")
 		return
@@ -102,6 +106,10 @@ func (h *EnvironmentHandler) Stop(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.service.Stop(r.Context(), id); err != nil {
+		if isNotFound(err) {
+			writeError(w, http.StatusNotFound, "environment not found")
+			return
+		}
 		h.logger.Error("stop environment", "id", id, "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to stop environment")
 		return
@@ -118,6 +126,10 @@ func (h *EnvironmentHandler) Remove(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.service.Remove(r.Context(), id); err != nil {
+		if isNotFound(err) {
+			writeError(w, http.StatusNotFound, "environment not found")
+			return
+		}
 		h.logger.Error("remove environment", "id", id, "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to remove environment")
 		return
@@ -145,8 +157,9 @@ func (h *EnvironmentHandler) Logs(w http.ResponseWriter, r *http.Request) {
 	flusher.Flush()
 
 	err = h.service.StreamLogs(r.Context(), id, func(data string) {
-		// Escape embedded newlines to prevent SSE event injection.
-		safe := strings.ReplaceAll(data, "\n", "\\n")
+		// Escape embedded line terminators to prevent SSE event injection.
+		safe := strings.ReplaceAll(data, "\r", "\\r")
+		safe = strings.ReplaceAll(safe, "\n", "\\n")
 		_, _ = fmt.Fprintf(w, "data: %s\n\n", safe)
 		flusher.Flush()
 	})
