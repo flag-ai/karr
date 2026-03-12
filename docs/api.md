@@ -278,15 +278,15 @@ Get a single environment. **Response 200** — environment object.
 
 ### POST /api/v1/environments/{id}/start
 
-Start an environment's container. **Response 204** (no body).
+Start an environment's container. **Response 204** (no body). Returns **404** if the environment does not exist.
 
 ### POST /api/v1/environments/{id}/stop
 
-Stop an environment's container. **Response 204** (no body).
+Stop an environment's container. **Response 204** (no body). Returns **404** if the environment does not exist.
 
 ### DELETE /api/v1/environments/{id}
 
-Remove an environment and its container. **Response 204** (no body).
+Remove an environment and its container. **Response 204** (no body). Returns **404** if the environment does not exist.
 
 ### GET /api/v1/environments/{id}/logs
 
@@ -301,6 +301,10 @@ data: Epoch 2/10: loss=1.892
 
 ---
 
+## Request Limits
+
+All request bodies are limited to **1 MiB**. Requests exceeding this limit receive a **413 Request Entity Too Large** response.
+
 ## Error Responses
 
 All endpoints return errors in a consistent format:
@@ -313,4 +317,5 @@ All endpoints return errors in a consistent format:
 |--------|---------|
 | 400 | Bad request — invalid JSON or missing required fields |
 | 404 | Resource not found |
+| 413 | Request body exceeds 1 MiB limit |
 | 500 | Internal server error |
