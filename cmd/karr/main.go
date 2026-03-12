@@ -17,6 +17,7 @@ import (
 
 	"github.com/flag-ai/commons/database"
 	"github.com/flag-ai/commons/health"
+	"github.com/flag-ai/commons/install"
 	"github.com/flag-ai/commons/secrets"
 	"github.com/flag-ai/commons/version"
 
@@ -130,6 +131,7 @@ func serve() error {
 	agentSvc := service.NewAgentService(queries, registry, logger)
 	projectSvc := service.NewProjectService(queries, logger)
 	envSvc := service.NewEnvironmentService(queries, registry, logger)
+	regSvc := service.NewRegistrationService(queries, registry, logger)
 
 	// Health registry
 	healthRegistry := health.NewRegistry()
@@ -142,15 +144,41 @@ func serve() error {
 		return fmt.Errorf("embedded SPA filesystem: %w", err)
 	}
 
+	// Install script config — validates token from query string.
+	installCfg := &install.HandlerConfig{
+		GenerateToken: func(r *http.Request) (string, error) {
+			token := r.URL.Query().Get("token")
+			if token == "" {
+				return "", fmt.Errorf("missing token parameter")
+			}
+			return token, nil
+		},
+	}
+
+	// Register callback — delegates to the registration service.
+	registerCb := func(req install.RegisterRequest, sourceIP string) (install.RegisterResult, error) {
+		agent, err := regSvc.Register(ctx, req.RegistrationToken, sourceIP, req.Port, req.AuthToken, req.Address)
+		if err != nil {
+			return install.RegisterResult{}, err
+		}
+		return install.RegisterResult{
+			AgentID: agent.ID.String(),
+			Message: "agent registered successfully",
+		}, nil
+	}
+
 	// Build router
 	router := api.NewRouter(&api.RouterConfig{
-		Logger:             logger,
-		HealthRegistry:     healthRegistry,
-		AgentService:       agentSvc,
-		ProjectService:     projectSvc,
-		EnvironmentService: envSvc,
-		SPAFS:              spaFS,
-		CORSOrigins:        cfg.CORSOrigins,
+		Logger:              logger,
+		HealthRegistry:      healthRegistry,
+		AgentService:        agentSvc,
+		ProjectService:      projectSvc,
+		EnvironmentService:  envSvc,
+		RegistrationService: regSvc,
+		InstallScriptCfg:    installCfg,
+		RegisterCallback:    registerCb,
+		SPAFS:               spaFS,
+		CORSOrigins:         cfg.CORSOrigins,
 	})
 
 	srv := &http.Server{

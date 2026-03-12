@@ -8,6 +8,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/flag-ai/commons/health"
+	"github.com/flag-ai/commons/install"
 	"github.com/flag-ai/karr/internal/api/handlers"
 	"github.com/flag-ai/karr/internal/api/middleware"
 	"github.com/flag-ai/karr/internal/service"
@@ -15,13 +16,16 @@ import (
 
 // RouterConfig holds all dependencies needed to build the HTTP router.
 type RouterConfig struct {
-	Logger             *slog.Logger
-	HealthRegistry     *health.Registry
-	AgentService       service.AgentServicer
-	ProjectService     service.ProjectServicer
-	EnvironmentService service.EnvironmentServicer
-	SPAFS              fs.FS  // Embedded SPA filesystem (may be nil for API-only mode).
-	CORSOrigins        string // Comma-separated allowed CORS origins.
+	Logger              *slog.Logger
+	HealthRegistry      *health.Registry
+	AgentService        service.AgentServicer
+	ProjectService      service.ProjectServicer
+	EnvironmentService  service.EnvironmentServicer
+	RegistrationService service.RegistrationServicer
+	InstallScriptCfg    *install.HandlerConfig // If nil, install.sh route is not registered.
+	RegisterCallback    install.RegisterCallback
+	SPAFS               fs.FS  // Embedded SPA filesystem (may be nil for API-only mode).
+	CORSOrigins         string // Comma-separated allowed CORS origins.
 }
 
 // NewRouter builds a chi.Mux with all KARR routes registered.
@@ -45,6 +49,24 @@ func NewRouter(cfg *RouterConfig) *chi.Mux {
 
 	// API v1 routes (no auth in Phase 1)
 	r.Route("/api/v1", func(r chi.Router) {
+		// Install script (no auth — token is in query string)
+		if cfg.InstallScriptCfg != nil {
+			r.Get("/install.sh", install.ScriptHandler(*cfg.InstallScriptCfg))
+		}
+
+		// Agent self-registration (no auth — token is in body)
+		if cfg.RegisterCallback != nil {
+			r.Post("/agents/register", install.RegisterHandler(cfg.RegisterCallback, cfg.Logger))
+		}
+
+		// Agent provisioning (registration management)
+		if cfg.RegistrationService != nil {
+			regH := handlers.NewRegistrationHandler(cfg.RegistrationService, cfg.Logger)
+			r.Post("/agents/provision", regH.Provision)
+			r.Get("/agents/registrations", regH.List)
+			r.Delete("/agents/registrations/{id}", regH.Delete)
+		}
+
 		// Agents
 		agentH := handlers.NewAgentHandler(cfg.AgentService, cfg.Logger)
 		r.Get("/agents", agentH.List)
