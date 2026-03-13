@@ -95,7 +95,9 @@ func NewRouter(cfg *RouterConfig) *chi.Mux {
 	})
 
 	// SPA fallback — serve embedded frontend
-	r.Get("/*", SPAHandler(cfg.SPAFS))
+	spaHandler := SPAHandler(cfg.SPAFS)
+	r.Get("/", spaHandler)
+	r.Get("/*", spaHandler)
 
 	return r
 }
