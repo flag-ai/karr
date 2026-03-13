@@ -32,7 +32,7 @@ function AgentCard({ agent }: { agent: Agent }) {
         </div>
       )}
 
-      {status?.gpu && status.gpu.gpus.length > 0 && (
+      {status?.gpu && status.gpu.gpus && status.gpu.gpus.length > 0 && (
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           {status.gpu.gpus.map(gpu => (
             <GPUCard key={gpu.index} gpu={gpu} />
