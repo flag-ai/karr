@@ -39,6 +39,18 @@ func timePtrFromPgTimestamptz(ts pgtype.Timestamptz) *time.Time {
 	return nil
 }
 
+// pgTimestamptz builds a valid pgtype.Timestamptz from a time.Time.
+func pgTimestamptz(t time.Time) pgtype.Timestamptz {
+	return pgtype.Timestamptz{Time: t, Valid: true}
+}
+
+// parseUUIDString parses a UUID string, returning the google/uuid
+// representation. Used by adapters that receive agent ids as strings
+// from flag-commons.
+func parseUUIDString(s string) (uuid.UUID, error) {
+	return uuid.Parse(s)
+}
+
 // agentFromRow converts a sqlc.KarrAgent to a models.Agent.
 func agentFromRow(row sqlc.KarrAgent) models.Agent { //nolint:gocritic // value receiver for clean conversion API
 	return models.Agent{
