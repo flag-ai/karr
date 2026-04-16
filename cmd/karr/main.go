@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/flag-ai/commons/bonnie"
 	"github.com/flag-ai/commons/database"
 	"github.com/flag-ai/commons/health"
 	"github.com/flag-ai/commons/install"
@@ -23,13 +24,17 @@ import (
 
 	"github.com/flag-ai/karr/internal/api"
 	"github.com/flag-ai/karr/internal/api/handlers"
-	"github.com/flag-ai/karr/internal/bonnie"
 	"github.com/flag-ai/karr/internal/config"
 	"github.com/flag-ai/karr/internal/db"
 	"github.com/flag-ai/karr/internal/db/sqlc"
+	"github.com/flag-ai/karr/internal/models"
 	"github.com/flag-ai/karr/internal/service"
 	"github.com/flag-ai/karr/web"
 )
+
+// bonnieHealthPollInterval matches the interval used by the previous
+// internal registry.
+const bonnieHealthPollInterval = 30 * time.Second
 
 func main() {
 	if err := run(); err != nil {
@@ -113,19 +118,20 @@ func serve() error {
 	// sqlc queries
 	queries := sqlc.New(pool)
 
-	// BONNIE agent registry
-	registry := bonnie.NewRegistry(queries, logger)
-	if err := registry.LoadFromDB(ctx); err != nil {
-		logger.Warn("failed to load agents from database", "error", err)
-	}
-	registry.StartHealthLoop(ctx)
+	// BONNIE agent registry (shared flag-commons implementation backed
+	// by a sqlc-based store adapter).
+	store := service.NewBonnieRegistryStore(queries)
+	registry := bonnie.NewRegistry(store, bonnieHealthPollInterval, logger)
 
-	// Register default agent if configured
+	// Register default agent if configured — insert the row first so
+	// the registry picks it up on reload.
 	if cfg.DefaultAgentURL != "" {
-		if err := registry.EnsureDefault(ctx, cfg.DefaultAgentURL, cfg.DefaultAgentToken); err != nil {
+		if err := ensureDefaultAgent(ctx, queries, cfg.DefaultAgentURL, cfg.DefaultAgentToken, logger); err != nil {
 			logger.Warn("failed to register default agent", "error", err)
 		}
 	}
+
+	registry.Start(ctx)
 
 	// Services
 	agentSvc := service.NewAgentService(queries, registry, logger)
@@ -222,6 +228,31 @@ func serve() error {
 	}
 
 	logger.Info("karr stopped")
+	return nil
+}
+
+// ensureDefaultAgent inserts a default agent record if no row with the
+// same URL already exists. The shared registry picks it up on its next
+// reload/poll cycle.
+func ensureDefaultAgent(ctx context.Context, queries *sqlc.Queries, url, token string, logger *slog.Logger) error {
+	agents, err := queries.ListAgents(ctx)
+	if err != nil {
+		return err
+	}
+	for i := range agents {
+		if agents[i].Url == url {
+			return nil // already present
+		}
+	}
+	if _, err := queries.CreateAgent(ctx, sqlc.CreateAgentParams{
+		Name:   "default",
+		Url:    url,
+		Token:  token,
+		Status: string(models.AgentStatusOffline),
+	}); err != nil {
+		return err
+	}
+	logger.Info("registered default BONNIE agent", "url", url)
 	return nil
 }
 

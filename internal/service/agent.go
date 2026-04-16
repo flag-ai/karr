@@ -7,7 +7,8 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/flag-ai/karr/internal/bonnie"
+	"github.com/flag-ai/commons/bonnie"
+
 	"github.com/flag-ai/karr/internal/db/sqlc"
 	"github.com/flag-ai/karr/internal/models"
 	"github.com/google/uuid"
@@ -26,6 +27,21 @@ type AgentStatusResponse struct {
 	Agent  models.Agent               `json:"agent"`
 	System *bonnie.SystemInfoResponse `json:"system,omitempty"`
 	GPU    *bonnie.GPUSnapshot        `json:"gpu,omitempty"`
+}
+
+// agentToEntry converts a domain model.Agent into a bonnie.Agent for
+// the shared registry. Value receiver matches the existing *FromRow
+// conversion helpers that live next door in convert.go.
+//
+//nolint:gocritic // matches the project's *FromRow conversion helpers
+func agentToEntry(a models.Agent, token string) bonnie.Agent {
+	return bonnie.Agent{
+		ID:     a.ID.String(),
+		Name:   a.Name,
+		URL:    a.URL,
+		Token:  token,
+		Status: string(a.Status),
+	}
 }
 
 // AgentService manages BONNIE agent registration and status.
@@ -103,7 +119,7 @@ func (s *AgentService) Create(ctx context.Context, input CreateAgentInput) (mode
 
 	// Register the agent with the BONNIE client registry so subsequent
 	// calls can reach it.
-	s.registry.Register(agent.ID, agent.Name, url, input.Token)
+	s.registry.Upsert(agentToEntry(agent, input.Token))
 
 	s.logger.Info("agent registered",
 		slog.String("id", agent.ID.String()),
@@ -121,7 +137,7 @@ func (s *AgentService) Delete(ctx context.Context, id uuid.UUID) error {
 	}
 
 	// Unregister from BONNIE client registry after successful DB delete.
-	s.registry.Unregister(id)
+	s.registry.Remove(id.String())
 
 	s.logger.Info("agent deleted", slog.String("id", id.String()))
 	return nil
@@ -143,7 +159,7 @@ func (s *AgentService) GetStatus(ctx context.Context, id uuid.UUID) (AgentStatus
 
 	resp := AgentStatusResponse{Agent: agent}
 
-	client, ok := s.registry.Get(id)
+	client, ok := s.registry.Get(id.String())
 	if !ok {
 		s.logger.Warn("no BONNIE client registered for agent", slog.String("id", id.String()))
 		return resp, nil

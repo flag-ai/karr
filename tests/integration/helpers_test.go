@@ -17,10 +17,10 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/flag-ai/commons/bonnie"
 	"github.com/flag-ai/commons/health"
 
 	"github.com/flag-ai/karr/internal/api"
-	"github.com/flag-ai/karr/internal/bonnie"
 	"github.com/flag-ai/karr/internal/db"
 	"github.com/flag-ai/karr/internal/db/sqlc"
 	"github.com/flag-ai/karr/internal/service"
@@ -196,7 +196,8 @@ func setupTestServer(t *testing.T) *testServer {
 	mockBonnie := newMockBONNIE(t)
 
 	// BONNIE registry — use the mock URL for all agent clients.
-	registry := bonnie.NewRegistry(queries, logger)
+	store := service.NewBonnieRegistryStore(queries)
+	registry := bonnie.NewRegistry(store, 0, logger)
 
 	// Services.
 	agentSvc := service.NewAgentService(queries, registry, logger)

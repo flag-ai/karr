@@ -10,7 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/flag-ai/karr/internal/bonnie"
+	"github.com/flag-ai/commons/bonnie"
+
 	"github.com/flag-ai/karr/internal/db/sqlc"
 	"github.com/flag-ai/karr/internal/models"
 	"github.com/google/uuid"
@@ -151,7 +152,7 @@ func (s *RegistrationService) Register(ctx context.Context, tokenPlain, sourceIP
 	}
 
 	// Register with the BONNIE client registry for health monitoring.
-	s.registry.Register(agent.ID, agent.Name, agentURL, authToken)
+	s.registry.Upsert(agentToEntry(agent, authToken))
 
 	s.logger.Info("agent registered via install script",
 		slog.String("id", agent.ID.String()),

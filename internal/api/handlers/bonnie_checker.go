@@ -5,8 +5,10 @@ import (
 )
 
 // AgentAvailabilityChecker checks whether at least one agent is online.
+// Matches the HasOnlineAgent signature exposed by
+// github.com/flag-ai/commons/bonnie.Registry.
 type AgentAvailabilityChecker interface {
-	HasOnlineAgent(ctx context.Context) error
+	HasOnlineAgent() error
 }
 
 // BonnieChecker implements health.Checker to verify at least one
@@ -26,6 +28,6 @@ func (c *BonnieChecker) Name() string {
 }
 
 // Check verifies at least one BONNIE agent is online.
-func (c *BonnieChecker) Check(ctx context.Context) error {
-	return c.agents.HasOnlineAgent(ctx)
+func (c *BonnieChecker) Check(_ context.Context) error {
+	return c.agents.HasOnlineAgent()
 }

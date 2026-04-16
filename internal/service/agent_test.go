@@ -7,7 +7,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/flag-ai/karr/internal/bonnie"
+	"github.com/flag-ai/commons/bonnie"
+
 	"github.com/flag-ai/karr/internal/db/sqlc"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -312,13 +313,13 @@ func (m *mockQuerier) CleanExpiredRegistrations(_ context.Context) error {
 
 // mockBonnieClient implements bonnie.Client for testing.
 type mockBonnieClient struct {
-	systemInfoFn      func(ctx context.Context) (*bonnie.SystemInfoResponse, error)
-	gpuStatusFn       func(ctx context.Context) (*bonnie.GPUSnapshot, error)
-	createContainerFn func(ctx context.Context, req *bonnie.CreateContainerRequest) (string, error)
-	startContainerFn  func(ctx context.Context, id string) error
-	stopContainerFn   func(ctx context.Context, id string) error
-	removeContainerFn func(ctx context.Context, id string) error
-	streamLogsFn      func(ctx context.Context, id string, callback func(data string)) error
+	systemInfoFn          func(ctx context.Context) (*bonnie.SystemInfoResponse, error)
+	gpuStatusFn           func(ctx context.Context) (*bonnie.GPUSnapshot, error)
+	createContainerFn     func(ctx context.Context, req *bonnie.CreateContainerRequest) (string, error)
+	startContainerFn      func(ctx context.Context, id string) error
+	stopContainerFn       func(ctx context.Context, id string) error
+	removeContainerFn     func(ctx context.Context, id string) error
+	streamContainerLogsFn func(ctx context.Context, id string, callback func(string)) error
 }
 
 func (c *mockBonnieClient) SystemInfo(ctx context.Context) (*bonnie.SystemInfoResponse, error) {
@@ -335,8 +336,16 @@ func (c *mockBonnieClient) GPUStatus(ctx context.Context) (*bonnie.GPUSnapshot, 
 	return &bonnie.GPUSnapshot{}, nil
 }
 
-func (c *mockBonnieClient) ListContainers(ctx context.Context) ([]bonnie.ContainerInfo, error) {
+func (c *mockBonnieClient) GPUMetrics(_ context.Context) (*bonnie.GPUMetrics, error) {
+	return &bonnie.GPUMetrics{}, nil
+}
+
+func (c *mockBonnieClient) ListContainers(_ context.Context) ([]bonnie.ContainerInfo, error) {
 	return nil, nil
+}
+
+func (c *mockBonnieClient) InspectContainer(_ context.Context, _ string) (*bonnie.ContainerDetail, error) {
+	return &bonnie.ContainerDetail{}, nil
 }
 
 func (c *mockBonnieClient) CreateContainer(ctx context.Context, req *bonnie.CreateContainerRequest) (string, error) {
@@ -360,7 +369,7 @@ func (c *mockBonnieClient) StopContainer(ctx context.Context, id string) error {
 	return nil
 }
 
-func (c *mockBonnieClient) RestartContainer(ctx context.Context, id string) error {
+func (c *mockBonnieClient) RestartContainer(_ context.Context, _ string) error {
 	return nil
 }
 
@@ -371,14 +380,34 @@ func (c *mockBonnieClient) RemoveContainer(ctx context.Context, id string) error
 	return nil
 }
 
-func (c *mockBonnieClient) StreamLogs(ctx context.Context, id string, callback func(data string)) error {
-	if c.streamLogsFn != nil {
-		return c.streamLogsFn(ctx, id, callback)
+func (c *mockBonnieClient) StreamContainerLogs(ctx context.Context, id string, onLine func(string)) error {
+	if c.streamContainerLogsFn != nil {
+		return c.streamContainerLogsFn(ctx, id, onLine)
 	}
 	return nil
 }
 
-func (c *mockBonnieClient) Health(ctx context.Context) error {
+func (c *mockBonnieClient) Exec(_ context.Context, _ *bonnie.ExecRequest, _ func(string)) (*bonnie.ExecResult, error) {
+	return &bonnie.ExecResult{}, nil
+}
+
+func (c *mockBonnieClient) FetchModel(_ context.Context, _ *bonnie.FetchModelRequest) (*bonnie.ModelEntry, error) {
+	return &bonnie.ModelEntry{}, nil
+}
+
+func (c *mockBonnieClient) ListModels(_ context.Context) ([]bonnie.ModelEntry, error) {
+	return nil, nil
+}
+
+func (c *mockBonnieClient) DeleteModel(_ context.Context, _ string) error {
+	return nil
+}
+
+func (c *mockBonnieClient) RunBenchmark(_ context.Context, _ *bonnie.PairedRunSpec, _ func(bonnie.PairedRunEvent)) (*bonnie.BenchmarkResult, error) {
+	return &bonnie.BenchmarkResult{}, nil
+}
+
+func (c *mockBonnieClient) Health(_ context.Context) error {
 	return nil
 }
 
@@ -394,7 +423,7 @@ var _ bonnie.Client = (*mockBonnieClient)(nil)
 
 func TestAgentService_Create(t *testing.T) {
 	mq := newMockQuerier()
-	reg := bonnie.NewRegistry(nil, testLogger())
+	reg := bonnie.NewRegistry(nil, 0, testLogger())
 	svc := NewAgentService(mq, reg, testLogger())
 	ctx := context.Background()
 
@@ -411,13 +440,13 @@ func TestAgentService_Create(t *testing.T) {
 	assert.NotEqual(t, uuid.Nil, agent.ID)
 
 	// Agent should be in the registry.
-	_, ok := reg.Get(agent.ID)
+	_, ok := reg.Get(agent.ID.String())
 	assert.True(t, ok, "agent should be registered in the BONNIE registry")
 }
 
 func TestAgentService_Create_ValidationError(t *testing.T) {
 	mq := newMockQuerier()
-	reg := bonnie.NewRegistry(nil, testLogger())
+	reg := bonnie.NewRegistry(nil, 0, testLogger())
 	svc := NewAgentService(mq, reg, testLogger())
 	ctx := context.Background()
 
@@ -440,7 +469,7 @@ func TestAgentService_Create_ValidationError(t *testing.T) {
 
 func TestAgentService_Delete(t *testing.T) {
 	mq := newMockQuerier()
-	reg := bonnie.NewRegistry(nil, testLogger())
+	reg := bonnie.NewRegistry(nil, 0, testLogger())
 	svc := NewAgentService(mq, reg, testLogger())
 	ctx := context.Background()
 
@@ -457,13 +486,13 @@ func TestAgentService_Delete(t *testing.T) {
 	require.NoError(t, err)
 
 	// Should be gone from registry.
-	_, ok := reg.Get(agent.ID)
+	_, ok := reg.Get(agent.ID.String())
 	assert.False(t, ok, "agent should be unregistered after deletion")
 }
 
 func TestAgentService_GetStatus_NoClient(t *testing.T) {
 	mq := newMockQuerier()
-	reg := bonnie.NewRegistry(nil, testLogger())
+	reg := bonnie.NewRegistry(nil, 0, testLogger())
 	svc := NewAgentService(mq, reg, testLogger())
 	ctx := context.Background()
 
@@ -474,7 +503,7 @@ func TestAgentService_GetStatus_NoClient(t *testing.T) {
 		Token: "secret",
 	})
 	require.NoError(t, err)
-	reg.Unregister(agent.ID)
+	reg.Remove(agent.ID.String())
 
 	// GetStatus should return agent info without system/gpu data.
 	status, err := svc.GetStatus(ctx, agent.ID)
@@ -486,7 +515,7 @@ func TestAgentService_GetStatus_NoClient(t *testing.T) {
 
 func TestAgentService_List(t *testing.T) {
 	mq := newMockQuerier()
-	reg := bonnie.NewRegistry(nil, testLogger())
+	reg := bonnie.NewRegistry(nil, 0, testLogger())
 	svc := NewAgentService(mq, reg, testLogger())
 	ctx := context.Background()
 
@@ -516,7 +545,7 @@ func TestAgentService_List(t *testing.T) {
 
 func TestAgentService_Get(t *testing.T) {
 	mq := newMockQuerier()
-	reg := bonnie.NewRegistry(nil, testLogger())
+	reg := bonnie.NewRegistry(nil, 0, testLogger())
 	svc := NewAgentService(mq, reg, testLogger())
 	ctx := context.Background()
 

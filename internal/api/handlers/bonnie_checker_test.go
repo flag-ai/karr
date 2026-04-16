@@ -14,7 +14,7 @@ type mockAgentAvailability struct {
 	err error
 }
 
-func (m *mockAgentAvailability) HasOnlineAgent(_ context.Context) error {
+func (m *mockAgentAvailability) HasOnlineAgent() error {
 	return m.err
 }
 
