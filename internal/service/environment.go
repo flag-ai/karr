@@ -7,7 +7,8 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/flag-ai/karr/internal/bonnie"
+	"github.com/flag-ai/commons/bonnie"
+
 	"github.com/flag-ai/karr/internal/db/sqlc"
 	"github.com/flag-ai/karr/internal/models"
 	"github.com/google/uuid"
@@ -156,7 +157,7 @@ func (s *EnvironmentService) Create(ctx context.Context, input CreateEnvironment
 	envID := row.ID
 
 	// Step 2: Get BONNIE client for the agent.
-	client, ok := s.registry.Get(input.AgentID)
+	client, ok := s.registry.Get(input.AgentID.String())
 	if !ok {
 		_ = s.queries.UpdateEnvironmentStatus(ctx, sqlc.UpdateEnvironmentStatusParams{
 			ID:     envID,
@@ -296,7 +297,7 @@ func (s *EnvironmentService) StreamLogs(ctx context.Context, id uuid.UUID, callb
 		return fmt.Errorf("environment %s has no container", id)
 	}
 
-	return client.StreamLogs(ctx, env.ContainerID, callback)
+	return client.StreamContainerLogs(ctx, env.ContainerID, callback)
 }
 
 // getEnvAndClient fetches an environment from the DB and resolves the BONNIE
@@ -312,7 +313,7 @@ func (s *EnvironmentService) getEnvAndClient(ctx context.Context, id uuid.UUID) 
 
 	env := environmentFromRow(row)
 
-	client, ok := s.registry.Get(env.AgentID)
+	client, ok := s.registry.Get(env.AgentID.String())
 	if !ok {
 		return models.Environment{}, nil, fmt.Errorf("no BONNIE client registered for agent %s", env.AgentID)
 	}

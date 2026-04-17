@@ -7,7 +7,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/flag-ai/karr/internal/bonnie"
+	"github.com/flag-ai/commons/bonnie"
+
 	"github.com/flag-ai/karr/internal/db/sqlc"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -103,7 +104,7 @@ func (m *regMockQuerier) CleanExpiredRegistrations(ctx context.Context) error {
 
 func TestRegistrationService_Provision(t *testing.T) {
 	mq := newRegMockQuerier()
-	reg := bonnie.NewRegistry(nil, testLogger())
+	reg := bonnie.NewRegistry(nil, 0, testLogger())
 	svc := NewRegistrationService(mq, reg, testLogger())
 	ctx := context.Background()
 
@@ -131,7 +132,7 @@ func TestRegistrationService_Provision(t *testing.T) {
 
 func TestRegistrationService_Provision_EmptyLabel(t *testing.T) {
 	mq := newRegMockQuerier()
-	reg := bonnie.NewRegistry(nil, testLogger())
+	reg := bonnie.NewRegistry(nil, 0, testLogger())
 	svc := NewRegistrationService(mq, reg, testLogger())
 
 	_, err := svc.Provision(context.Background(), "", "https://karr.example.com")
@@ -141,7 +142,7 @@ func TestRegistrationService_Provision_EmptyLabel(t *testing.T) {
 
 func TestRegistrationService_Register(t *testing.T) {
 	mq := newRegMockQuerier()
-	registry := bonnie.NewRegistry(nil, testLogger())
+	registry := bonnie.NewRegistry(nil, 0, testLogger())
 	svc := NewRegistrationService(mq, registry, testLogger())
 	ctx := context.Background()
 
@@ -158,7 +159,7 @@ func TestRegistrationService_Register(t *testing.T) {
 	assert.Empty(t, agent.Token, "token should be stripped from response")
 
 	// Agent should be in the BONNIE registry.
-	_, ok := registry.Get(agent.ID)
+	_, ok := registry.Get(agent.ID.String())
 	assert.True(t, ok, "agent should be registered in BONNIE registry")
 
 	// Registration should be claimed.
@@ -169,7 +170,7 @@ func TestRegistrationService_Register(t *testing.T) {
 
 func TestRegistrationService_Register_WithAddressOverride(t *testing.T) {
 	mq := newRegMockQuerier()
-	registry := bonnie.NewRegistry(nil, testLogger())
+	registry := bonnie.NewRegistry(nil, 0, testLogger())
 	svc := NewRegistrationService(mq, registry, testLogger())
 	ctx := context.Background()
 
@@ -185,7 +186,7 @@ func TestRegistrationService_Register_WithAddressOverride(t *testing.T) {
 
 func TestRegistrationService_Register_InvalidToken(t *testing.T) {
 	mq := newRegMockQuerier()
-	registry := bonnie.NewRegistry(nil, testLogger())
+	registry := bonnie.NewRegistry(nil, 0, testLogger())
 	svc := NewRegistrationService(mq, registry, testLogger())
 
 	_, err := svc.Register(context.Background(), "nonexistent-token", "192.168.1.1", 7777, "auth", "")
@@ -195,7 +196,7 @@ func TestRegistrationService_Register_InvalidToken(t *testing.T) {
 
 func TestRegistrationService_List(t *testing.T) {
 	mq := newRegMockQuerier()
-	registry := bonnie.NewRegistry(nil, testLogger())
+	registry := bonnie.NewRegistry(nil, 0, testLogger())
 	svc := NewRegistrationService(mq, registry, testLogger())
 	ctx := context.Background()
 
@@ -212,7 +213,7 @@ func TestRegistrationService_List(t *testing.T) {
 
 func TestRegistrationService_Delete(t *testing.T) {
 	mq := newRegMockQuerier()
-	registry := bonnie.NewRegistry(nil, testLogger())
+	registry := bonnie.NewRegistry(nil, 0, testLogger())
 	svc := NewRegistrationService(mq, registry, testLogger())
 	ctx := context.Background()
 

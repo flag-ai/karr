@@ -7,7 +7,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/flag-ai/karr/internal/bonnie"
+	"github.com/flag-ai/commons/bonnie"
+
 	"github.com/flag-ai/karr/internal/db/sqlc"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -50,7 +51,7 @@ func newTestEnvSetup(t *testing.T) *testEnvSetup {
 	t.Cleanup(server.Close)
 
 	mq := newMockQuerier()
-	reg := bonnie.NewRegistry(nil, testLogger())
+	reg := bonnie.NewRegistry(nil, 0, testLogger())
 	svc := NewEnvironmentService(mq, reg, testLogger())
 
 	// Register a fake agent whose URL points to our httptest server.
@@ -63,7 +64,7 @@ func newTestEnvSetup(t *testing.T) *testEnvSetup {
 		Token:  "token",
 		Status: "online",
 	}
-	reg.Register(agentID, "test-agent", server.URL, "token")
+	reg.Upsert(bonnie.Agent{ID: agentID.String(), Name: "test-agent", URL: server.URL, Token: "token"})
 
 	return &testEnvSetup{
 		mq:      mq,
@@ -124,7 +125,7 @@ func TestEnvironmentService_Create_NoClient(t *testing.T) {
 	ctx := context.Background()
 
 	// Unregister the agent so there's no BONNIE client.
-	s.reg.Unregister(s.agentID)
+	s.reg.Remove(s.agentID.String())
 
 	_, err := s.svc.Create(ctx, CreateEnvironmentInput{
 		AgentID: s.agentID,
@@ -153,7 +154,7 @@ func TestEnvironmentService_Create_ContainerFails(t *testing.T) {
 	defer server.Close()
 
 	mq := newMockQuerier()
-	reg := bonnie.NewRegistry(nil, testLogger())
+	reg := bonnie.NewRegistry(nil, 0, testLogger())
 	svc := NewEnvironmentService(mq, reg, testLogger())
 	ctx := context.Background()
 
@@ -165,7 +166,7 @@ func TestEnvironmentService_Create_ContainerFails(t *testing.T) {
 		Url:    server.URL,
 		Status: "online",
 	}
-	reg.Register(agentID, "test-agent", server.URL, "token")
+	reg.Upsert(bonnie.Agent{ID: agentID.String(), Name: "test-agent", URL: server.URL, Token: "token"})
 
 	_, err := svc.Create(ctx, CreateEnvironmentInput{
 		AgentID: agentID,
@@ -273,7 +274,7 @@ func TestEnvironmentService_Get_NotFound(t *testing.T) {
 
 func TestEnvironmentService_Remove_NoContainer(t *testing.T) {
 	mq := newMockQuerier()
-	reg := bonnie.NewRegistry(nil, testLogger())
+	reg := bonnie.NewRegistry(nil, 0, testLogger())
 	svc := NewEnvironmentService(mq, reg, testLogger())
 	ctx := context.Background()
 
@@ -294,7 +295,7 @@ func TestEnvironmentService_Remove_NoContainer(t *testing.T) {
 		ContainerID: "",
 		Status:      "error",
 	}
-	reg.Register(agentID, "test-agent", server.URL, "token")
+	reg.Upsert(bonnie.Agent{ID: agentID.String(), Name: "test-agent", URL: server.URL, Token: "token"})
 
 	err := svc.Remove(ctx, envID)
 	require.NoError(t, err)
@@ -306,7 +307,7 @@ func TestEnvironmentService_Remove_NoContainer(t *testing.T) {
 
 func TestEnvironmentService_StreamLogs_NoContainer(t *testing.T) {
 	mq := newMockQuerier()
-	reg := bonnie.NewRegistry(nil, testLogger())
+	reg := bonnie.NewRegistry(nil, 0, testLogger())
 	svc := NewEnvironmentService(mq, reg, testLogger())
 	ctx := context.Background()
 
@@ -326,7 +327,7 @@ func TestEnvironmentService_StreamLogs_NoContainer(t *testing.T) {
 		ContainerID: "",
 		Status:      "error",
 	}
-	reg.Register(agentID, "test-agent", server.URL, "token")
+	reg.Upsert(bonnie.Agent{ID: agentID.String(), Name: "test-agent", URL: server.URL, Token: "token"})
 
 	err := svc.StreamLogs(ctx, envID, func(data string) {})
 	assert.Error(t, err)
@@ -335,7 +336,7 @@ func TestEnvironmentService_StreamLogs_NoContainer(t *testing.T) {
 
 func TestEnvironmentService_Start_NoClient(t *testing.T) {
 	mq := newMockQuerier()
-	reg := bonnie.NewRegistry(nil, testLogger())
+	reg := bonnie.NewRegistry(nil, 0, testLogger())
 	svc := NewEnvironmentService(mq, reg, testLogger())
 	ctx := context.Background()
 
@@ -360,7 +361,7 @@ func TestEnvironmentService_Start_NoClient(t *testing.T) {
 
 func TestEnvironmentService_Stop_NoClient(t *testing.T) {
 	mq := newMockQuerier()
-	reg := bonnie.NewRegistry(nil, testLogger())
+	reg := bonnie.NewRegistry(nil, 0, testLogger())
 	svc := NewEnvironmentService(mq, reg, testLogger())
 	ctx := context.Background()
 
