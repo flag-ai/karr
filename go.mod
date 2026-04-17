@@ -3,8 +3,8 @@ module github.com/flag-ai/karr
 go 1.25
 
 require (
-	// TODO: bump to tagged release once https://github.com/flag-ai/commons/pull/2 merges.
-	github.com/flag-ai/commons v0.0.0-20260416170709-ea14d2232505
+	// TODO(#5): bump to tagged release once https://github.com/flag-ai/commons/pull/2 merges.
+	github.com/flag-ai/commons v0.0.0-20260417152939-04407fca2cbc
 	github.com/go-chi/chi/v5 v5.2.5
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.8.0
