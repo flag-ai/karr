@@ -21,12 +21,20 @@ from karr import DIST_NAME, __version__
 from karr.api.errors import install_error_handlers
 from karr.api.middleware import install_middleware
 from karr.api.ratelimit import RateLimiter, rate_limited
-from karr.api.routers import agents, auth, metrics, projects, registrations
+from karr.api.routers import (
+    agents,
+    auth,
+    environments,
+    metrics,
+    projects,
+    registrations,
+)
 from karr.bonnie_store import KarrRegistryStore
 from karr.config import KarrConfig
 from karr.db import MIGRATIONS_DIR
 from karr.db.session import make_session_factory
 from karr.security import TokenCipher
+from karr.services.reconcile import Reconciler
 from karr.services.seed import ensure_default_agent
 
 STATIC_DIR = Path(__file__).parent / "web" / "static"
@@ -43,6 +51,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     url = cfg.database_url.get_secret_value()
     engine = await connect(url)
     registry: AgentRegistry | None = None
+    reconciler: Reconciler | None = None
     try:
         await run_migrations_async(MIGRATIONS_DIR, url)
         sessions = make_session_factory(engine)
@@ -69,8 +78,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # The first poll probes every agent with retries; run it in the
         # background so an unreachable host cannot stall startup and /health.
         starter = asyncio.create_task(registry.start(), name="bonnie-registry-start")
+        reconciler = Reconciler(sessions, registry)
+        reconciler.start()
+        app.state.reconciler = reconciler
         yield
     finally:
+        if reconciler is not None:
+            await reconciler.stop()
         if registry is not None:
             if not starter.done():
                 starter.cancel()
@@ -141,6 +155,7 @@ def create_app(
     )
     app.include_router(agents.router)
     app.include_router(projects.router)
+    app.include_router(environments.router)
     if spa:
         mount_spa(app)
     return app
