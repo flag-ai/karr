@@ -1,0 +1,29 @@
+{
+  "name": "environments_create_duplicate_name",
+  "notes": "Go allows duplicates (K-D22: 409)",
+  "method": "POST",
+  "path": "/api/v1/environments",
+  "body": {
+    "agent_id": "773947ea-1c76-4cfc-b881-a99dac638fb9",
+    "name": "env-1",
+    "image": "img"
+  },
+  "status": 201,
+  "response_headers": {
+    "Content-Type": "application/json",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY"
+  },
+  "response_json": {
+    "id": "763d30e8-aeab-479a-a4a3-0c107b90ba15",
+    "agent_id": "773947ea-1c76-4cfc-b881-a99dac638fb9",
+    "name": "env-1",
+    "image": "img",
+    "container_id": "test-container-123",
+    "status": "stopped",
+    "gpu": false,
+    "created_at": "2026-09-14T13:58:25.540133-04:00",
+    "updated_at": "2026-09-14T13:58:25.540133-04:00"
+  }
+}

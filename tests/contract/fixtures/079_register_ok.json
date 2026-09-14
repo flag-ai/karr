@@ -1,0 +1,26 @@
+{
+  "name": "register_ok",
+  "notes": "XFF trusted unconditionally in Go (K-D6)",
+  "method": "POST",
+  "path": "/api/v1/agents/register",
+  "headers": {
+    "X-Forwarded-For": "203.0.113.9"
+  },
+  "body": {
+    "registration_token": "45b88ca0b3fbd58fa6935ef2ab149b2d2685080b782c6be59a2763078c7f5757",
+    "port": 7777,
+    "auth_token": "agent-auth",
+    "address": "192.168.1.50"
+  },
+  "status": 201,
+  "response_headers": {
+    "Content-Type": "application/json",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY"
+  },
+  "response_json": {
+    "agent_id": "8d35a1ca-894c-4821-9596-89a8aab1ec7e",
+    "message": "agent registered successfully"
+  }
+}

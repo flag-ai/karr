@@ -1,0 +1,11 @@
+{
+  "name": "environments_start",
+  "method": "POST",
+  "path": "/api/v1/environments/e86e76c7-87b4-4c22-ad2b-c5fb51418c16/start",
+  "status": 204,
+  "response_headers": {
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY"
+  }
+}

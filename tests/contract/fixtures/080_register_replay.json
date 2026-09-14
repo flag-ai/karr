@@ -1,0 +1,21 @@
+{
+  "name": "register_replay",
+  "notes": "second claim of the same token",
+  "method": "POST",
+  "path": "/api/v1/agents/register",
+  "body": {
+    "registration_token": "45b88ca0b3fbd58fa6935ef2ab149b2d2685080b782c6be59a2763078c7f5757",
+    "port": 7777,
+    "auth_token": "agent-auth"
+  },
+  "status": 422,
+  "response_headers": {
+    "Content-Type": "application/json",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY"
+  },
+  "response_json": {
+    "error": "registration failed"
+  }
+}

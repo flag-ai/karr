@@ -1,0 +1,13 @@
+{
+  "name": "install_missing_token",
+  "method": "GET",
+  "path": "/api/v1/install.sh",
+  "status": 400,
+  "response_headers": {
+    "Content-Type": "text/plain; charset=utf-8",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY"
+  },
+  "response_text": "missing token parameter\n"
+}

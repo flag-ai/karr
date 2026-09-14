@@ -1,0 +1,22 @@
+{
+  "name": "provision",
+  "notes": "token shown once; install_command format",
+  "method": "POST",
+  "path": "/api/v1/agents/provision",
+  "body": {
+    "label": "gpu-03"
+  },
+  "status": 201,
+  "response_headers": {
+    "Content-Type": "application/json",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY"
+  },
+  "response_json": {
+    "id": "7e342867-f8f1-4f23-8cd0-933fb28a5b61",
+    "token": "45b88ca0b3fbd58fa6935ef2ab149b2d2685080b782c6be59a2763078c7f5757",
+    "install_command": "curl -fsSL 'http://127.0.0.1:34269/api/v1/install.sh?token=45b88ca0b3fbd58fa6935ef2ab149b2d2685080b782c6be59a2763078c7f5757' | sudo bash",
+    "expires_at": "2026-09-14T14:58:25.543672-04:00"
+  }
+}

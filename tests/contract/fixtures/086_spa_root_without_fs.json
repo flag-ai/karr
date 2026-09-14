@@ -1,0 +1,14 @@
+{
+  "name": "spa_root_without_fs",
+  "notes": "harness has no SPA FS",
+  "method": "GET",
+  "path": "/",
+  "status": 404,
+  "response_headers": {
+    "Content-Type": "text/plain; charset=utf-8",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY"
+  },
+  "response_text": "404 page not found\n"
+}

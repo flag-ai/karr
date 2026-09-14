@@ -1,0 +1,29 @@
+{
+  "name": "environments_create_second",
+  "method": "POST",
+  "path": "/api/v1/environments",
+  "body": {
+    "agent_id": "edea21c3-9a6a-4af4-a7ad-74e732de67ad",
+    "name": "env-2",
+    "image": "img",
+    "gpu": false
+  },
+  "status": 201,
+  "response_headers": {
+    "Content-Type": "application/json",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY"
+  },
+  "response_json": {
+    "id": "186d9496-040f-422d-bdce-5e4a8dd638d4",
+    "agent_id": "edea21c3-9a6a-4af4-a7ad-74e732de67ad",
+    "name": "env-2",
+    "image": "img",
+    "container_id": "test-container-123",
+    "status": "stopped",
+    "gpu": false,
+    "created_at": "2026-09-14T13:58:25.542442-04:00",
+    "updated_at": "2026-09-14T13:58:25.542442-04:00"
+  }
+}

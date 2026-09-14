@@ -1,0 +1,25 @@
+{
+  "name": "agents_create_bad_url_scheme",
+  "notes": "Go accepts any URL (K-D13)",
+  "method": "POST",
+  "path": "/api/v1/agents",
+  "body": {
+    "name": "gpu-02",
+    "url": "ftp://x"
+  },
+  "status": 201,
+  "response_headers": {
+    "Content-Type": "application/json",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY"
+  },
+  "response_json": {
+    "id": "adb91cca-3c7e-47ad-a93a-67a74882c514",
+    "name": "gpu-02",
+    "url": "ftp://x",
+    "status": "offline",
+    "created_at": "2026-09-14T13:58:24.826323-04:00",
+    "updated_at": "2026-09-14T13:58:24.826323-04:00"
+  }
+}

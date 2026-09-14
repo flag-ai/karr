@@ -1,0 +1,11 @@
+{
+  "name": "agents_delete",
+  "method": "DELETE",
+  "path": "/api/v1/agents/edea21c3-9a6a-4af4-a7ad-74e732de67ad",
+  "status": 204,
+  "response_headers": {
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY"
+  }
+}

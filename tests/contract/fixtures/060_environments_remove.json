@@ -1,0 +1,11 @@
+{
+  "name": "environments_remove",
+  "method": "DELETE",
+  "path": "/api/v1/environments/186d9496-040f-422d-bdce-5e4a8dd638d4",
+  "status": 204,
+  "response_headers": {
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY"
+  }
+}

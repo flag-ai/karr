@@ -1,0 +1,30 @@
+{
+  "name": "ready_no_agents",
+  "notes": "Go returns 503 while no BONNIE agent is online (K-D non-critical fix changes this)",
+  "method": "GET",
+  "path": "/ready",
+  "status": 503,
+  "response_headers": {
+    "Content-Type": "application/json",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY"
+  },
+  "response_json": {
+    "healthy": false,
+    "version": "dev (commit: unknown, built: unknown)",
+    "checks": [
+      {
+        "name": "database",
+        "healthy": true,
+        "latency_ms": 0
+      },
+      {
+        "name": "bonnie-agents",
+        "healthy": false,
+        "error": "bonnie: no agents registered",
+        "latency_ms": 0
+      }
+    ]
+  }
+}
