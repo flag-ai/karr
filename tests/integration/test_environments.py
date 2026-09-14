@@ -73,16 +73,16 @@ def _mock_bonnie(container_state: str = "running") -> None:
     )
 
 
+def _url(api: TestClient) -> str:
+    return api.app.state.config.database_url.get_secret_value()  # type: ignore[attr-defined]
+
+
 def _agent(api: TestClient, name: str = "gpu-01") -> str:
     created = api.post(
         "/api/v1/agents", json={"name": name, "url": BONNIE, "token": "t"}
     )
     assert created.status_code == 201, created.text
     return created.json()["id"]
-
-
-def _db_url(api: TestClient) -> str:
-    return api.app.state.config.database_url.get_secret_value()  # type: ignore[attr-defined]
 
 
 @respx.mock
@@ -281,7 +281,34 @@ def test_reconciliation(api: TestClient) -> None:
     assert (
         row["status"] == "error" and row["status_message"] == "container missing"
     )  # K-D3
-    assert api.app.state.reconciler._task is not None  # type: ignore[attr-defined]
+    # a row stuck in `creating` (crash between create and commit) is adopted by name
+    engine = create_sync_engine(_url(api))
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                "UPDATE karr_environments SET status = 'creating', container_id = '' WHERE id = :id"
+            ),
+            {"id": eid},
+        )
+    engine.dispose()
+    respx.get(f"{BONNIE}/api/v1/containers").mock(
+        return_value=httpx.Response(
+            200,
+            json=[
+                {
+                    "id": "ctr-9",
+                    "name": "env-1",
+                    "image": "img",
+                    "state": "running",
+                    "status": "Up",
+                    "created": 1,
+                }
+            ],
+        )
+    )
+    assert api.portal.call(reconcile_once, sessions, registry) == 1
+    row = api.get(f"/api/v1/environments/{eid}").json()
+    assert row["status"] == "running" and row["container_id"] == "ctr-9"
 
 
 def test_environment_routes_require_admin(api: TestClient) -> None:
@@ -300,4 +327,3 @@ def test_environment_routes_require_admin(api: TestClient) -> None:
             == 401
         )
     assert api.delete(f"/api/v1/environments/{ZERO}").status_code == 401
-    assert create_sync_engine is not None and text is not None

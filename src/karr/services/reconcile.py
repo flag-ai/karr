@@ -13,14 +13,22 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from karr.services.environments import EnvironmentService
 
 DEFAULT_RECONCILE_INTERVAL = 30.0
+DEFAULT_PER_AGENT_TIMEOUT = 20.0
 
 _log = logging.getLogger(__name__)
 
 
 async def reconcile_once(
-    sessions: async_sessionmaker[AsyncSession], registry: AgentRegistry
+    sessions: async_sessionmaker[AsyncSession],
+    registry: AgentRegistry,
+    *,
+    per_agent_timeout: float = DEFAULT_PER_AGENT_TIMEOUT,
 ) -> int:
-    """One pass over every online agent: one ListContainers call each."""
+    """One pass over every online agent: one ListContainers call each.
+
+    Each agent is isolated: a failure (BONNIE, database, or a timeout) is
+    logged and the pass continues with the next agent.
+    """
     changed = 0
     for agent in registry.agents():
         if agent.status != STATUS_ONLINE:
@@ -29,13 +37,24 @@ async def reconcile_once(
         if client is None:
             continue
         try:
-            containers = await client.list_containers()
+            containers = await asyncio.wait_for(
+                client.list_containers(), timeout=per_agent_timeout
+            )
+            async with sessions() as session:
+                changed += await EnvironmentService(session, registry).reconcile_agent(
+                    uuid.UUID(agent.id), containers
+                )
         except BonnieError as exc:
             _log.debug("reconcile skipped agent %s: %s", agent.name, exc)
-            continue
-        async with sessions() as session:
-            changed += await EnvironmentService(session, registry).reconcile_agent(
-                uuid.UUID(agent.id), containers
+        except asyncio.TimeoutError:
+            _log.warning(
+                "reconcile skipped agent %s: timed out after %.0fs",
+                agent.name,
+                per_agent_timeout,
+            )
+        except Exception as exc:  # noqa: BLE001 - one agent must not abort the pass
+            _log.error(
+                "reconcile failed for agent %s: %s", agent.name, exc, exc_info=exc
             )
     if changed:
         _log.info("reconciled environment status: changed=%d", changed)
@@ -64,7 +83,7 @@ class Reconciler:
     async def stop(self) -> None:
         if self._task is not None:
             self._task.cancel()
-            with contextlib.suppress(asyncio.CancelledError, Exception):
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._task
             self._task = None
 
@@ -74,4 +93,4 @@ class Reconciler:
             try:
                 await reconcile_once(self._sessions, self._registry)
             except Exception as exc:  # noqa: BLE001 - the loop must survive
-                _log.error("reconcile pass failed: %s", exc)
+                _log.error("reconcile pass failed: %s", exc, exc_info=exc)

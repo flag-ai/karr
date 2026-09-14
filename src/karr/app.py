@@ -52,6 +52,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     engine = await connect(url)
     registry: AgentRegistry | None = None
     reconciler: Reconciler | None = None
+    starter: asyncio.Task[None] | None = None
     try:
         await run_migrations_async(MIGRATIONS_DIR, url)
         sessions = make_session_factory(engine)
@@ -78,6 +79,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # The first poll probes every agent with retries; run it in the
         # background so an unreachable host cannot stall startup and /health.
         starter = asyncio.create_task(registry.start(), name="bonnie-registry-start")
+        starter.add_done_callback(_log_task_failure)
         reconciler = Reconciler(sessions, registry)
         reconciler.start()
         app.state.reconciler = reconciler
@@ -86,13 +88,20 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         if reconciler is not None:
             await reconciler.stop()
         if registry is not None:
-            if not starter.done():
+            if starter is not None and not starter.done():
                 starter.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
                     await starter
             await registry.stop()
         await engine.dispose()
         _log.info("karr stopped")
+
+
+def _log_task_failure(task: asyncio.Task[None]) -> None:
+    if not task.cancelled() and task.exception() is not None:
+        _log.error(
+            "background task %s failed", task.get_name(), exc_info=task.exception()
+        )
 
 
 def create_app(

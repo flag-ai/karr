@@ -63,3 +63,26 @@ async def test_relay_stops_pump_when_consumer_leaves() -> None:
     before = seen
     await asyncio.sleep(0.02)
     assert seen == before  # the pump task was cancelled
+
+
+async def test_relay_applies_backpressure_and_closes_upstream() -> None:
+    from karr.api.sse import QUEUE_MAX_LINES
+
+    produced = 0
+    closed = False
+
+    async def endless() -> AsyncIterator[str]:
+        nonlocal produced, closed
+        try:
+            while True:
+                produced += 1
+                yield "tick"
+        finally:
+            closed = True
+
+    gen = relay(endless(), keepalive_seconds=5)
+    assert await gen.__anext__() == "data: tick\n\n"
+    await asyncio.sleep(0.05)  # the consumer stalls; the pump must not run away
+    assert produced <= QUEUE_MAX_LINES + 2
+    await gen.aclose()
+    assert closed  # the upstream generator was closed, releasing its connection

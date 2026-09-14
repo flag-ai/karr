@@ -144,8 +144,8 @@ class EnvironmentService:
             raise ApiError(502, message) from exc
         await self._set_status(env.id, target, "")
         _log.info(
-            "environment %sed: id=%s",
-            action.rstrip("p") + ("p" if action == "stop" else ""),
+            "environment %s: id=%s",
+            "started" if action == "start" else "stopped",
             env.id,
         )
 
@@ -176,14 +176,18 @@ class EnvironmentService:
     async def reconcile_agent(
         self, agent_id: uuid.UUID, containers: builtins.list[ContainerInfo]
     ) -> int:
-        """K-D3: map BONNIE's container states onto the environments of one agent."""
+        """K-D3: map BONNIE's container states onto the environments of one agent.
+
+        A row still ``creating`` (a crash between BONNIE's create and our
+        commit) is adopted through its container name, which is unique per
+        agent, so no container is left untracked.
+        """
         by_id = {c.id: c for c in containers}
+        by_name = {c.name: c for c in containers}
         rows = (
             (
                 await self._s.execute(
-                    select(Environment).where(
-                        Environment.agent_id == agent_id, Environment.container_id != ""
-                    )
+                    select(Environment).where(Environment.agent_id == agent_id)
                 )
             )
             .scalars()
@@ -191,15 +195,28 @@ class EnvironmentService:
         )
         changed = 0
         for env in rows:
-            container = by_id.get(env.container_id)
+            container = (
+                by_id.get(env.container_id)
+                if env.container_id
+                else by_name.get(env.name)
+            )
             if container is None:
                 status, message = "error", "container missing"
             elif container.state == "running":
                 status, message = "running", ""
             else:
                 status, message = "stopped", ""
-            if env.status in ("creating",):
+            if env.status == "creating":
+                if container is not None:
+                    env.container_id, env.status, env.status_message = (
+                        container.id,
+                        status,
+                        message,
+                    )
+                    changed += 1
                 continue
+            if not env.container_id:
+                continue  # an error row without a container has nothing to reconcile
             if env.status != status or env.status_message != message:
                 env.status, env.status_message = status, message
                 changed += 1

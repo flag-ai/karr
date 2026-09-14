@@ -18,6 +18,7 @@ from collections.abc import AsyncIterator
 from fastapi.responses import StreamingResponse
 
 DEFAULT_KEEPALIVE_SECONDS = 15.0
+QUEUE_MAX_LINES = 1000  # backpressure: a stalled client stops the upstream read
 SSE_HEADERS = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
 
 _log = logging.getLogger(__name__)
@@ -42,7 +43,9 @@ async def relay(
     lines: AsyncIterator[str], *, keepalive_seconds: float = DEFAULT_KEEPALIVE_SECONDS
 ) -> AsyncIterator[str]:
     """Turn upstream log lines into SSE frames with keepalives and a terminal event."""
-    queue: asyncio.Queue[tuple[str, str | None]] = asyncio.Queue()
+    queue: asyncio.Queue[tuple[str, str | None]] = asyncio.Queue(
+        maxsize=QUEUE_MAX_LINES
+    )
 
     async def pump() -> None:
         try:
@@ -52,7 +55,7 @@ async def relay(
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001 - reported to the client as an error event
-            _log.debug("log stream ended with error: %s", exc)
+            _log.warning("log stream ended with error: %s", exc)
             await queue.put(("error", str(exc) or exc.__class__.__name__))
 
     task = asyncio.create_task(pump())
@@ -75,8 +78,12 @@ async def relay(
                 return
     finally:
         task.cancel()
-        with contextlib.suppress(asyncio.CancelledError, Exception):
+        with contextlib.suppress(asyncio.CancelledError):
             await task
+        aclose = getattr(lines, "aclose", None)
+        if aclose is not None:  # release the upstream BONNIE connection promptly
+            with contextlib.suppress(Exception):
+                await aclose()
 
 
 def sse_response(frames: AsyncIterator[str]) -> StreamingResponse:
