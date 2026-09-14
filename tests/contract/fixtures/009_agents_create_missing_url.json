@@ -14,5 +14,6 @@
   },
   "response_json": {
     "error": "name and url are required"
-  }
+  },
+  "notes": "Go: 400 name and url are required (K-D5: 422 url is required)"
 }

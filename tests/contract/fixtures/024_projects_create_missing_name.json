@@ -14,5 +14,6 @@
   },
   "response_json": {
     "error": "name is required"
-  }
+  },
+  "notes": "Go: 400 name is required (K-D5: 422)"
 }

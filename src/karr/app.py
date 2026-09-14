@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -10,6 +12,7 @@ from pathlib import Path
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from flag_commons.bonnie import AgentRegistry, BonnieAgentsChecker
 from flag_commons.database import connect, run_migrations_async
 from flag_commons.health import DatabaseChecker, Registry
 from flag_commons.health.fastapi import health_router
@@ -17,11 +20,13 @@ from flag_commons.health.fastapi import health_router
 from karr import DIST_NAME, __version__
 from karr.api.errors import install_error_handlers
 from karr.api.middleware import install_middleware
-from karr.api.routers import auth, metrics
+from karr.api.routers import agents, auth, metrics, projects
+from karr.bonnie_store import KarrRegistryStore
 from karr.config import KarrConfig
 from karr.db import MIGRATIONS_DIR
 from karr.db.session import make_session_factory
 from karr.security import TokenCipher
+from karr.services.seed import ensure_default_agent
 
 STATIC_DIR = Path(__file__).parent / "web" / "static"
 
@@ -36,14 +41,41 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     url = cfg.database_url.get_secret_value()
     engine = await connect(url)
+    registry: AgentRegistry | None = None
     try:
         await run_migrations_async(MIGRATIONS_DIR, url)
+        sessions = make_session_factory(engine)
+        cipher = TokenCipher(cfg.secret_key.get_secret_value())
         app.state.engine = engine
-        app.state.session_factory = make_session_factory(engine)
-        app.state.cipher = TokenCipher(cfg.secret_key.get_secret_value())
+        app.state.session_factory = sessions
+        app.state.cipher = cipher
+
+        if cfg.default_agent_url:
+            try:
+                await ensure_default_agent(
+                    sessions,
+                    cipher,
+                    cfg.default_agent_url,
+                    cfg.default_agent_token.get_secret_value(),
+                )
+            except Exception as exc:  # noqa: BLE001 - seeding is best effort, like Go
+                _log.warning("failed to register default agent: %s", exc)
+
+        registry = AgentRegistry(KarrRegistryStore(sessions, cipher))
+        app.state.registry = registry
         app.state.health.register(DatabaseChecker(engine))
+        app.state.health.register(BonnieAgentsChecker(registry), critical=False)
+        # The first poll probes every agent with retries; run it in the
+        # background so an unreachable host cannot stall startup and /health.
+        starter = asyncio.create_task(registry.start(), name="bonnie-registry-start")
         yield
     finally:
+        if registry is not None:
+            if not starter.done():
+                starter.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await starter
+            await registry.stop()
         await engine.dispose()
         _log.info("karr stopped")
 
@@ -69,6 +101,11 @@ def create_app(
     )
     app.state.config = config
     app.state.health = Registry(dist_name=DIST_NAME)
+    if not bootstrap:
+        # Tests provide their own engine/session factory; give them a registry
+        # and cipher so the routers can run.
+        app.state.registry = AgentRegistry(None, poll_interval=0)
+        app.state.cipher = TokenCipher(config.secret_key.get_secret_value())
 
     install_error_handlers(app)
     install_middleware(
@@ -77,6 +114,9 @@ def create_app(
     app.include_router(health_router(app.state.health, DIST_NAME, redact_errors=True))
     app.include_router(metrics.router)
     app.include_router(auth.router)
+    # Static /agents/... routes (registrations, K3) must precede /agents/{id}.
+    app.include_router(agents.router)
+    app.include_router(projects.router)
     if spa:
         mount_spa(app)
     return app
