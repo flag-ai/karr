@@ -39,7 +39,9 @@ export default function Agents() {
   const deleteMutation = useMutation({
     mutationFn: api.deleteAgent,
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['agents'] })
+      for (const key of ['agents', 'registrations', 'environments']) {
+        void queryClient.invalidateQueries({ queryKey: [key] })
+      }
       toast.success('Agent removed')
     },
     onError: err => toast.error(`Remove failed: ${describeError(err)}`),

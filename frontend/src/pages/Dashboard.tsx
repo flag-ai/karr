@@ -5,12 +5,14 @@ import StatusBadge from '../components/StatusBadge'
 import GPUCard from '../components/GPUCard'
 
 export function AgentCard({ agent }: { agent: Agent }) {
-  const { data: status } = useQuery({
+  const online = agent.status === 'online'
+  const { data: snapshot } = useQuery({
     queryKey: ['agentStatus', agent.id],
     queryFn: () => api.getAgentStatus(agent.id),
     refetchInterval: 10000,
-    enabled: agent.status === 'online',
+    enabled: online,
   })
+  const status = online ? snapshot : undefined // never show stale numbers beside "offline"
 
   const system = status?.system?.system
   const disk = status?.system?.disk

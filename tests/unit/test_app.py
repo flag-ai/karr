@@ -162,10 +162,14 @@ def test_spa_fallback(tmp_path: Path) -> None:
         assert c.get("/api/v1/agents").status_code == 404
 
 
-def test_spa_without_build(client: TestClient) -> None:
-    resp = client.get("/")
-    assert resp.status_code == 404
-    assert resp.json() == {"error": "frontend not built"}
+def test_spa_without_build(config: KarrConfig, tmp_path: Path) -> None:
+    # an explicit empty static dir: the working tree may hold a local build
+    app = create_app(config, bootstrap=False, spa=False)
+    mount_spa(app, tmp_path / "static")
+    with TestClient(app) as client:
+        resp = client.get("/")
+        assert resp.status_code == 404
+        assert resp.json() == {"error": "frontend not built"}
 
 
 class ThingBody(BaseModel):
@@ -209,11 +213,14 @@ def test_validation_split_400_vs_422(config: KarrConfig, auth: dict[str, str]) -
         )
 
 
-def test_health_routes_are_registered_before_the_spa(config: KarrConfig) -> None:
+def test_health_routes_are_registered_before_the_spa(
+    config: KarrConfig, tmp_path: Path
+) -> None:
     # Regression: the bootstrap app once added the health router inside the
     # lifespan, after the SPA catch-all, so /health and /ready were 404 in
     # production. Without entering the lifespan the routes must still win.
-    app = create_app(config, bootstrap=True)
+    app = create_app(config, bootstrap=True, spa=False)
+    mount_spa(app, tmp_path / "static")  # never the working tree's build
     client = TestClient(app)
     assert client.get("/health").status_code == 200
     assert client.get("/metrics").status_code == 200

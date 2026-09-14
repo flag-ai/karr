@@ -1,3 +1,6 @@
 node_modules/
 dist/
+coverage/
 *.tsbuildinfo
+# the global gitignore on some machines excludes lib/; this tree needs it
+!src/lib/

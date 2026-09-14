@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 
 export type ToastKind = 'error' | 'success' | 'info'
@@ -23,22 +23,56 @@ const KIND_COLOR: Record<ToastKind, string> = {
   info: 'var(--blue)',
 }
 
-const TOAST_TTL_MS = 6000
+export const TOAST_TTL_MS = 6000
+export const MAX_TOASTS = 5
 
-/** Provides `useToast()`; every mutation error surfaces here (K-D18). */
+/** Fired by the query cache for a failed background query (see main.tsx). */
+export interface QueryErrorDetail {
+  label: string
+  message: string
+}
+
+/** Provides `useToast()`; every mutation and query error surfaces here (K-D18). */
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([])
   const next = useRef(1)
+  const timers = useRef(new Map<number, ReturnType<typeof setTimeout>>())
 
   const dismiss = useCallback((id: number) => {
+    const timer = timers.current.get(id)
+    if (timer !== undefined) clearTimeout(timer)
+    timers.current.delete(id)
     setToasts(prev => prev.filter(t => t.id !== id))
   }, [])
 
   const notify = useCallback((kind: ToastKind, message: string) => {
-    const id = next.current++
-    setToasts(prev => [...prev.slice(-4), { id, kind, message }])
-    setTimeout(() => dismiss(id), TOAST_TTL_MS)
+    setToasts(prev => {
+      if (prev.some(t => t.kind === kind && t.message === message)) return prev // a polling query repeats itself
+      const id = next.current++
+      timers.current.set(id, setTimeout(() => dismiss(id), TOAST_TTL_MS))
+      const kept = prev.length >= MAX_TOASTS ? prev.slice(prev.length - MAX_TOASTS + 1) : prev
+      for (const evicted of prev.slice(0, prev.length - kept.length)) {
+        const timer = timers.current.get(evicted.id)
+        if (timer !== undefined) clearTimeout(timer)
+        timers.current.delete(evicted.id)
+      }
+      return [...kept, { id, kind, message }]
+    })
   }, [dismiss])
+
+  useEffect(() => {
+    const pending = timers.current
+    const onQueryError = (e: Event) => {
+      const { label, message } = (e as CustomEvent<QueryErrorDetail>).detail
+      notify('error', `Could not load ${label}: ${message}`)
+    }
+    window.addEventListener('karr:query-error', onQueryError)
+    return () => {
+      window.removeEventListener('karr:query-error', onQueryError)
+      for (const timer of pending.values()) clearTimeout(timer)
+      pending.clear()
+    }
+  }, [notify])
 
   const value = useMemo<ToastApi>(() => ({
     notify,
@@ -66,7 +100,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         {toasts.map(toast => (
           <div
             key={toast.id}
-            role={toast.kind === 'error' ? 'alert' : 'status'}
+            data-kind={toast.kind}
             style={{
               backgroundColor: 'var(--mantle)',
               borderLeft: `4px solid ${KIND_COLOR[toast.kind]}`,

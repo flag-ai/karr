@@ -5,6 +5,7 @@ export interface ConfirmOptions {
   title: string
   message: string
   confirmLabel?: string
+  /** Style the confirm button as destructive (the default: every caller today is). */
   danger?: boolean
 }
 
@@ -12,46 +13,73 @@ type ConfirmFn = (options: ConfirmOptions) => Promise<boolean>
 
 const ConfirmContext = createContext<ConfirmFn | null>(null)
 
-interface Pending {
-  options: ConfirmOptions
-  resolve: (ok: boolean) => void
-}
+const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
 
 /** Provides `useConfirm()`: a promise-based modal for destructive actions (K-D18). */
 export function ConfirmProvider({ children }: { children: ReactNode }) {
-  const [pending, setPending] = useState<Pending | null>(null)
+  const [options, setOptions] = useState<ConfirmOptions | null>(null)
+  const resolver = useRef<((ok: boolean) => void) | null>(null)
+  const restoreTo = useRef<HTMLElement | null>(null)
+  const dialog = useRef<HTMLDivElement>(null)
   const confirmButton = useRef<HTMLButtonElement>(null)
 
-  const confirm = useCallback<ConfirmFn>(options => {
+  const settle = useCallback((ok: boolean) => {
+    const resolve = resolver.current
+    resolver.current = null
+    setOptions(null)
+    resolve?.(ok)
+    restoreTo.current?.focus()
+    restoreTo.current = null
+  }, [])
+
+  const confirm = useCallback<ConfirmFn>(next => {
+    resolver.current?.(false) // a second request supersedes the first
+    restoreTo.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
     return new Promise<boolean>(resolve => {
-      setPending(prev => {
-        prev?.resolve(false) // a second request supersedes the first
-        return { options, resolve }
-      })
+      resolver.current = resolve
+      setOptions(next)
     })
   }, [])
 
-  const settle = useCallback((ok: boolean) => {
-    setPending(prev => {
-      prev?.resolve(ok)
-      return null
-    })
-  }, [])
+  // an unmounted provider must not leave callers awaiting forever
+  useEffect(() => () => resolver.current?.(false), [])
 
   useEffect(() => {
-    if (!pending) return
+    if (!options) return
     confirmButton.current?.focus()
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') settle(false)
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        settle(false)
+        return
+      }
+      if (e.key !== 'Tab' || !dialog.current) return
+      // keep focus inside the dialog
+      const focusable = Array.from(dialog.current.querySelectorAll<HTMLElement>(FOCUSABLE))
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (!first || !last) return
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault()
+        last.focus()
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault()
+        first.focus()
+      } else if (!dialog.current.contains(document.activeElement)) {
+        e.preventDefault()
+        first.focus()
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [pending, settle])
+  }, [options, settle])
+
+  const danger = options?.danger ?? true
 
   return (
     <ConfirmContext.Provider value={confirm}>
       {children}
-      {pending && (
+      {options && (
         <div
           role="presentation"
           onClick={() => settle(false)}
@@ -66,6 +94,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
           }}
         >
           <div
+            ref={dialog}
             role="dialog"
             aria-modal="true"
             aria-labelledby="confirm-title"
@@ -80,22 +109,17 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
             }}
           >
             <h2 id="confirm-title" style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>
-              {pending.options.title}
+              {options.title}
             </h2>
             <p id="confirm-message" style={{ fontSize: 13, color: 'var(--subtext1)', marginBottom: 16 }}>
-              {pending.options.message}
+              {options.message}
             </p>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
               <button type="button" className="secondary" onClick={() => settle(false)}>
                 Cancel
               </button>
-              <button
-                ref={confirmButton}
-                type="button"
-                className={pending.options.danger === false ? 'primary' : 'danger'}
-                onClick={() => settle(true)}
-              >
-                {pending.options.confirmLabel ?? 'Confirm'}
+              <button ref={confirmButton} type="button" className={danger ? 'danger' : 'primary'} onClick={() => settle(true)}>
+                {options.confirmLabel ?? 'Confirm'}
               </button>
             </div>
           </div>

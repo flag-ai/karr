@@ -2,7 +2,9 @@
 
 Framing follows Go: each log line becomes ``data: <line>\\n\\n`` with embedded
 ``\\r`` and ``\\n`` escaped as the two-character sequences ``\\r`` and ``\\n``
-so a line can never inject a frame. New here: a ``: keepalive`` comment
+so a line can never inject a frame. Unlike Go the backslash itself is escaped
+first (``\\`` -> ``\\\\``), so a literal ``\\n`` in a log line survives the
+round trip through the SPA's unescape. New here: a ``: keepalive`` comment
 every ``keepalive_seconds`` so idle proxies keep the connection, an
 ``event: end`` frame when the upstream stream closes, and ``event: error``
 with a message when it fails, instead of silently ending.
@@ -25,7 +27,7 @@ _log = logging.getLogger(__name__)
 
 
 def escape_line(line: str) -> str:
-    return line.replace("\r", "\\r").replace("\n", "\\n")
+    return line.replace("\\", "\\\\").replace("\r", "\\r").replace("\n", "\\n")
 
 
 def data_frame(line: str) -> str:

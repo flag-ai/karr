@@ -20,8 +20,10 @@ function readStoredToken(): string | null {
   }
 }
 
-export function setToken(value: string): void {
+/** Remember the token; with `persist: false` it lives in memory only until verified. */
+export function setToken(value: string, persist = true): void {
   token = value
+  if (!persist) return
   try {
     sessionStorage.setItem(TOKEN_KEY, value)
   } catch {
@@ -77,10 +79,10 @@ async function errorMessage(resp: Response): Promise<string> {
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers: Record<string, string> = {
     Accept: 'application/json',
+    ...(options.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
     ...authHeaders(),
     ...(options.headers as Record<string, string> | undefined),
   }
-  if (options.body !== undefined) headers['Content-Type'] = 'application/json'
 
   let resp: Response
   try {
@@ -103,45 +105,47 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return resp.json() as Promise<T>
 }
 
+const enc = encodeURIComponent
+
 export const api = {
   /** 204 with a valid token, 401 otherwise; used by the AuthGate. */
   authCheck: () => request<void>('/auth/check'),
 
   // Agents
   listAgents: () => request<Agent[]>('/agents'),
-  getAgent: (id: string) => request<Agent>(`/agents/${id}`),
+  getAgent: (id: string) => request<Agent>(`/agents/${enc(id)}`),
   createAgent: (data: CreateAgentRequest) =>
     request<Agent>('/agents', { method: 'POST', body: JSON.stringify(data) }),
   deleteAgent: (id: string) =>
-    request<void>(`/agents/${id}`, { method: 'DELETE' }),
-  getAgentStatus: (id: string) => request<AgentStatus>(`/agents/${id}/status`),
+    request<void>(`/agents/${enc(id)}`, { method: 'DELETE' }),
+  getAgentStatus: (id: string) => request<AgentStatus>(`/agents/${enc(id)}/status`),
   provisionAgent: (data: ProvisionRequest) =>
     request<ProvisionResponse>('/agents/provision', { method: 'POST', body: JSON.stringify(data) }),
   listRegistrations: () => request<AgentRegistration[]>('/agents/registrations'),
   deleteRegistration: (id: string) =>
-    request<void>(`/agents/registrations/${id}`, { method: 'DELETE' }),
+    request<void>(`/agents/registrations/${enc(id)}`, { method: 'DELETE' }),
 
   // Projects
   listProjects: () => request<Project[]>('/projects'),
-  getProject: (id: string) => request<Project>(`/projects/${id}`),
+  getProject: (id: string) => request<Project>(`/projects/${enc(id)}`),
   createProject: (data: CreateProjectRequest) =>
     request<Project>('/projects', { method: 'POST', body: JSON.stringify(data) }),
   updateProject: (id: string, data: UpdateProjectRequest) =>
-    request<Project>(`/projects/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    request<Project>(`/projects/${enc(id)}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteProject: (id: string) =>
-    request<void>(`/projects/${id}`, { method: 'DELETE' }),
+    request<void>(`/projects/${enc(id)}`, { method: 'DELETE' }),
 
   // Environments
   listEnvironments: () => request<Environment[]>('/environments'),
-  getEnvironment: (id: string) => request<Environment>(`/environments/${id}`),
+  getEnvironment: (id: string) => request<Environment>(`/environments/${enc(id)}`),
   createEnvironment: (data: CreateEnvironmentRequest) =>
     request<Environment>('/environments', { method: 'POST', body: JSON.stringify(data) }),
   startEnvironment: (id: string) =>
-    request<void>(`/environments/${id}/start`, { method: 'POST' }),
+    request<void>(`/environments/${enc(id)}/start`, { method: 'POST' }),
   stopEnvironment: (id: string) =>
-    request<void>(`/environments/${id}/stop`, { method: 'POST' }),
+    request<void>(`/environments/${enc(id)}/stop`, { method: 'POST' }),
   removeEnvironment: (id: string) =>
-    request<void>(`/environments/${id}`, { method: 'DELETE' }),
+    request<void>(`/environments/${enc(id)}`, { method: 'DELETE' }),
   environmentLogsUrl: (id: string) => `${BASE}/environments/${id}/logs`,
 }
 

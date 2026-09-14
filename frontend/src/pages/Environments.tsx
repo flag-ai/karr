@@ -93,7 +93,11 @@ export default function Environments() {
     if (ok) removeMutation.mutate(env.id)
   }
 
-  const busy = startMutation.isPending || stopMutation.isPending || removeMutation.isPending
+  const busyId =
+    (startMutation.isPending && startMutation.variables) ||
+    (stopMutation.isPending && stopMutation.variables) ||
+    (removeMutation.isPending && removeMutation.variables) ||
+    null
 
   return (
     <div>
@@ -151,7 +155,7 @@ export default function Environments() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <StatusBadge status={env.status} title={env.status_message} />
                 {env.status === 'stopped' && (
-                  <button type="button" className="primary" onClick={() => startMutation.mutate(env.id)} disabled={busy} style={btn}>
+                  <button type="button" className="primary" onClick={() => startMutation.mutate(env.id)} disabled={busyId === env.id} style={btn}>
                     Start
                   </button>
                 )}
@@ -161,12 +165,12 @@ export default function Environments() {
                   </button>
                 )}
                 {env.status === 'running' && (
-                  <button type="button" className="danger" onClick={() => void stop(env)} disabled={busy} style={btn}>
+                  <button type="button" className="danger" onClick={() => void stop(env)} disabled={busyId === env.id} style={btn}>
                     Stop
                   </button>
                 )}
                 {(env.status === 'stopped' || env.status === 'error') && (
-                  <button type="button" className="danger" onClick={() => void remove(env)} disabled={busy} style={btn}>
+                  <button type="button" className="danger" onClick={() => void remove(env)} disabled={busyId === env.id} style={btn}>
                     Remove
                   </button>
                 )}
@@ -174,7 +178,7 @@ export default function Environments() {
             </div>
             {logsEnvId === env.id && (
               <div style={{ marginTop: 12 }}>
-                <LogStream environmentId={env.id} active={true} />
+                <LogStream environmentId={env.id} />
               </div>
             )}
           </div>

@@ -4,14 +4,14 @@ import { readEvents, unescapeLine } from '../api/sse'
 
 interface Props {
   environmentId: string
-  active: boolean
 }
 
 export const MAX_LINES = 5000
 const RECONNECT_BASE_MS = 1000
 const RECONNECT_MAX_MS = 30000
+const RESTART_MARKER = '— connection lost; log restarted from the container tail —'
 
-type Phase = 'connecting' | 'streaming' | 'ended' | 'error' | 'reconnecting' | 'stopped'
+type Phase = 'connecting' | 'streaming' | 'ended' | 'error' | 'reconnecting'
 
 /**
  * Relays the container log SSE stream (K-D2): reads it over fetch so the
@@ -19,18 +19,16 @@ type Phase = 'connecting' | 'streaming' | 'ended' | 'error' | 'reconnecting' | '
  * reconnects with backoff after a dropped connection, and stops cleanly on
  * `event: end` / `event: error`.
  */
-export default function LogStream({ environmentId, active }: Props) {
+export default function LogStream({ environmentId }: Props) {
   const [lines, setLines] = useState<string[]>([])
   const [phase, setPhase] = useState<Phase>('connecting')
   const [detail, setDetail] = useState('')
   const containerRef = useRef<HTMLDivElement>(null)
+  const stickToBottom = useRef(true)
 
   useEffect(() => {
-    if (!active) {
-      setPhase('stopped')
-      return
-    }
     const controller = new AbortController()
+    const { signal } = controller
     let attempt = 0
     let timer: ReturnType<typeof setTimeout> | undefined
     setLines([])
@@ -44,21 +42,33 @@ export default function LogStream({ environmentId, active }: Props) {
       })
     }
 
+    const fail = (message: string) => {
+      if (signal.aborted) return
+      setDetail(message)
+      setPhase('error')
+    }
+
     const connect = async (): Promise<void> => {
+      if (signal.aborted) return
       setPhase(attempt === 0 ? 'connecting' : 'reconnecting')
       let resp: Response
       try {
         resp = await fetch(api.environmentLogsUrl(environmentId), {
           headers: { Accept: 'text/event-stream', ...authHeaders() },
-          signal: controller.signal,
+          signal,
         })
       } catch {
-        if (controller.signal.aborted) return
-        scheduleReconnect()
+        if (!signal.aborted) scheduleReconnect()
+        return
+      }
+      if (signal.aborted) return
+      if (resp.status === 401) {
+        window.dispatchEvent(new Event('karr:unauthorized'))
+        fail('unauthorized')
         return
       }
       if (!resp.ok) {
-        // 401/404/409 will not change on retry; show the server's message
+        // 404/409 will not change on retry; show the server's message
         let message = `${resp.status} ${resp.statusText}`
         try {
           const body = (await resp.json()) as { error?: string }
@@ -66,26 +76,28 @@ export default function LogStream({ environmentId, active }: Props) {
         } catch {
           // keep the status line
         }
-        setDetail(message)
-        setPhase('error')
+        fail(message)
         return
       }
       if (!resp.body) {
-        setDetail('the server sent no stream')
-        setPhase('error')
+        fail('the server sent no stream')
         return
       }
-      attempt = 0
+      if (attempt > 0) append(RESTART_MARKER) // the relay restarts from the tail: no cursor
       setPhase('streaming')
+      let received = false
       try {
-        for await (const event of readEvents(resp.body, controller.signal)) {
+        for await (const event of readEvents(resp.body, signal)) {
+          if (!received) {
+            received = true
+            attempt = 0 // only a stream that delivered something resets the backoff
+          }
           if (event.event === 'end') {
-            setPhase('ended')
+            if (!signal.aborted) setPhase('ended')
             return
           }
           if (event.event === 'error') {
-            setDetail(event.data || 'stream failed')
-            setPhase('error')
+            fail(event.data || 'stream failed')
             return
           }
           append(unescapeLine(event.data))
@@ -93,7 +105,7 @@ export default function LogStream({ environmentId, active }: Props) {
       } catch {
         // dropped mid-stream: fall through to reconnect
       }
-      if (!controller.signal.aborted) scheduleReconnect()
+      if (!signal.aborted) scheduleReconnect()
     }
 
     const scheduleReconnect = () => {
@@ -108,19 +120,25 @@ export default function LogStream({ environmentId, active }: Props) {
       controller.abort()
       if (timer !== undefined) clearTimeout(timer)
     }
-  }, [environmentId, active])
+  }, [environmentId])
 
   useEffect(() => {
     const el = containerRef.current
-    if (el) el.scrollTop = el.scrollHeight
+    if (el && stickToBottom.current) el.scrollTop = el.scrollHeight
   }, [lines])
+
+  const onScroll = () => {
+    const el = containerRef.current
+    if (el) stickToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24
+  }
 
   return (
     <div>
       <div
         ref={containerRef}
+        onScroll={onScroll}
         role="log"
-        aria-live="polite"
+        aria-live="off"
         aria-label="Container logs"
         style={{
           backgroundColor: 'var(--crust)',
@@ -144,13 +162,12 @@ export default function LogStream({ environmentId, active }: Props) {
           lines.map((line, i) => <div key={i}>{line}</div>)
         )}
       </div>
-      <div style={{ fontSize: 11, color: phase === 'error' ? 'var(--red)' : 'var(--overlay1)', marginTop: 4 }}>
+      <div role="status" style={{ fontSize: 11, color: phase === 'error' ? 'var(--red)' : 'var(--overlay1)', marginTop: 4 }}>
         {phase === 'connecting' && 'Connecting…'}
         {phase === 'streaming' && `Streaming (${lines.length} lines${lines.length >= MAX_LINES ? ', oldest dropped' : ''})`}
         {phase === 'reconnecting' && 'Connection lost, reconnecting…'}
         {phase === 'ended' && 'Stream ended.'}
         {phase === 'error' && `Stream error: ${detail}`}
-        {phase === 'stopped' && 'Stopped.'}
       </div>
     </div>
   )

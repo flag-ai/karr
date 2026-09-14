@@ -56,3 +56,19 @@ def test_auth_check(client: TestClient, auth: dict[str, str]) -> None:
         == 401
     )
     assert client.get("/api/v1/auth/check", headers=auth).status_code == 204
+
+
+def test_auth_check_is_rate_limited(client: TestClient) -> None:
+    """The sign-in form must not turn /auth/check into a full-speed token oracle."""
+    from karr.api.routers.auth import AUTH_LIMIT
+
+    limiter = getattr(client.app.state, AUTH_LIMIT[0])  # type: ignore[attr-defined]
+    limiter.reset()
+    bad = {"Authorization": "Bearer definitely-not-the-token"}
+    codes = [
+        client.get("/api/v1/auth/check", headers=bad).status_code
+        for _ in range(AUTH_LIMIT[1] + 1)
+    ]
+    assert codes[: AUTH_LIMIT[1]] == [401] * AUTH_LIMIT[1]
+    assert codes[-1] == 429
+    limiter.reset()

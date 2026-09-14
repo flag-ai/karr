@@ -53,9 +53,10 @@ export default function AuthGate({ children }: { children: ReactNode }) {
     if (!value) return
     setSubmitting(true)
     setLoginError('')
-    setToken(value)
+    setToken(value, false) // in memory only until the server accepts it
     try {
       await api.authCheck()
+      setToken(value)
       setInput('')
       setAuthed(true)
     } catch (err) {

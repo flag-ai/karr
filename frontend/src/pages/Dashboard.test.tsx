@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { screen } from '@testing-library/react'
 import Dashboard, { AgentCard } from './Dashboard'
-import type { Agent } from '../api/types'
+import type { Agent, Environment } from '../api/types'
 import { jsonResponse, renderApp } from '../test/helpers'
 
 const agent: Agent = {
@@ -41,10 +41,11 @@ describe('Dashboard', () => {
     vi.stubGlobal('fetch', vi.fn((url: string) => {
       if (url.endsWith('/agents')) return Promise.resolve(jsonResponse([{ ...agent, status: 'offline' }]))
       if (url.endsWith('/environments')) {
-        return Promise.resolve(jsonResponse([
-          { id: 'e1', agent_id: 'a1', name: 'env-1', image: 'img', status: 'running', gpu: false, created_at: '', updated_at: '' },
-          { id: 'e2', agent_id: 'a1', name: 'env-2', image: 'img', status: 'stopped', gpu: false, created_at: '', updated_at: '' },
-        ]))
+        const rows: Environment[] = [
+          { id: 'e1', agent_id: 'a1', name: 'env-1', image: 'img', status: 'running', gpu: false, created_at: agent.created_at, updated_at: agent.updated_at },
+          { id: 'e2', agent_id: 'a1', name: 'env-2', image: 'img', status: 'stopped', gpu: false, created_at: agent.created_at, updated_at: agent.updated_at },
+        ]
+        return Promise.resolve(jsonResponse(rows))
       }
       return Promise.reject(new Error(`unexpected ${url}`))
     }))

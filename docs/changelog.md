@@ -39,5 +39,7 @@ Python Rewrite Plan and summarised here as the service PRs land.
   the API client rejects non-JSON bodies (K-D18); the log viewer reads the SSE
   relay over `fetch` (so the bearer can be sent), caps the buffer at 5 000
   lines, unescapes the frames, reconnects with backoff and stops on
-  `event: end`/`event: error` (K-D2); clipboard fallback for plain-http pages;
+  `event: end`/`event: error` (K-D2; the relay now escapes backslashes too so
+  lines round-trip); `/api/v1/auth/check` is rate limited per client because
+  the sign-in form posts to it; clipboard fallback for plain-http pages;
   ARIA roles on the nav, progress bars, dialogs and the log; Vitest suite.

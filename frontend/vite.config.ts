@@ -3,11 +3,13 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
 // The build lands in dist/ and is copied into src/karr/web/static by the
-// Dockerfile (see the README for the local copy step). `base: "./"` keeps the
-// asset URLs relative so the SPA works behind any path prefix.
+// Dockerfile (see the README for the local copy step). The base is absolute:
+// the service mounts /assets at the root and the history router has no
+// basename, and a relative base would resolve to /agents/assets/... under a
+// trailing slash and load index.html as the script.
 export default defineConfig({
   plugins: [react()],
-  base: './',
+  base: '/',
   build: {
     outDir: 'dist',
     emptyOutDir: true,

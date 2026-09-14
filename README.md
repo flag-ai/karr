@@ -19,6 +19,10 @@ karr serve
 
 Open the address in a browser and sign in with the value of `KARR_ADMIN_TOKEN`;
 the SPA keeps it in `sessionStorage` for the tab and sends it as a bearer token.
+Anything but a loopback deployment must sit behind a TLS terminator (in
+kitt-stack that is Traefik): the admin token and the one-time registration
+tokens in install commands travel in every request. Set `KARR_ENABLE_HSTS=true`
+once TLS is in place.
 
 ## Development
 

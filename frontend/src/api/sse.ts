@@ -3,7 +3,8 @@
  *
  * `EventSource` cannot send the admin bearer token, so the log stream is read
  * with fetch and parsed here. Each frame from KARR is `data: <line>` with the
- * line's `\r` and `\n` escaped (K-D2); `event: end` and `event: error` close it.
+ * line's `\`, `\r` and `\n` escaped (K-D2); `event: end` and `event: error`
+ * close it.
  */
 
 export interface SseEvent {
@@ -11,7 +12,14 @@ export interface SseEvent {
   data: string
 }
 
-/** Undo KARR's frame escaping: `\\n` -> newline, `\\r` -> carriage return. */
+/** Pending bytes without a frame terminator are capped so a container that
+ * prints without newlines cannot grow the tab without bound. */
+export const MAX_PENDING_CHARS = 1024 * 1024
+/** A single event's data is truncated past this many characters. */
+export const MAX_EVENT_CHARS = 64 * 1024
+export const TRUNCATED_MARKER = ' …[truncated]'
+
+/** Undo KARR's frame escaping: `\\n` -> newline, `\\r` -> carriage return, `\\\\` -> backslash. */
 export function unescapeLine(data: string): string {
   return data.replace(/\\(n|r|\\)/g, (_match, c: string) =>
     c === 'n' ? '\n' : c === 'r' ? '\r' : '\\',
@@ -22,8 +30,7 @@ export function unescapeLine(data: string): string {
 export function parseBlock(block: string): SseEvent | null {
   let event = 'message'
   const data: string[] = []
-  for (const raw of block.split('\n')) {
-    const line = raw.endsWith('\r') ? raw.slice(0, -1) : raw
+  for (const line of block.split('\n')) {
     if (line === '' || line.startsWith(':')) continue
     const colon = line.indexOf(':')
     const field = colon === -1 ? line : line.slice(0, colon)
@@ -33,7 +40,17 @@ export function parseBlock(block: string): SseEvent | null {
     else if (field === 'data') data.push(value)
   }
   if (data.length === 0 && event === 'message') return null
-  return { event, data: data.join('\n') }
+  let joined = data.join('\n')
+  if (joined.length > MAX_EVENT_CHARS) joined = joined.slice(0, MAX_EVENT_CHARS) + TRUNCATED_MARKER
+  return { event, data: joined }
+}
+
+/** Normalise `\r\n` and lone `\r` terminators to `\n`, holding back a trailing `\r`
+ * that may be the first half of a pair split across chunks. */
+function normalise(buffer: string): { ready: string; held: string } {
+  const held = buffer.endsWith('\r') ? '\r' : ''
+  const ready = buffer.slice(0, buffer.length - held.length).replace(/\r\n|\r/g, '\n')
+  return { ready, held }
 }
 
 /** Yield events from a streaming body until it closes or the signal aborts. */
@@ -48,7 +65,8 @@ export async function* readEvents(
     while (!signal?.aborted) {
       const { value, done } = await reader.read()
       if (done) break
-      buffer += decoder.decode(value, { stream: true })
+      const { ready, held } = normalise(buffer + decoder.decode(value, { stream: true }))
+      buffer = ready
       let split = buffer.indexOf('\n\n')
       while (split !== -1) {
         const parsed = parseBlock(buffer.slice(0, split))
@@ -56,8 +74,15 @@ export async function* readEvents(
         if (parsed) yield parsed
         split = buffer.indexOf('\n\n')
       }
+      if (buffer.length > MAX_PENDING_CHARS) {
+        // no terminator in sight: emit what we have, truncated, and drop the rest
+        const parsed = parseBlock(buffer.slice(0, MAX_EVENT_CHARS))
+        buffer = ''
+        if (parsed) yield { ...parsed, data: parsed.data + TRUNCATED_MARKER }
+      }
+      buffer += held
     }
-    const tail = parseBlock(buffer)
+    const tail = parseBlock(normalise(buffer).ready)
     if (tail) yield tail
   } finally {
     reader.releaseLock()
