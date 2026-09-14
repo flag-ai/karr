@@ -31,3 +31,13 @@ Python Rewrite Plan and summarised here as the service PRs land.
   escapes frames, and ends with `event: end` or `event: error`; a container
   BONNIE no longer knows about can still be deleted once the reconciler has
   marked it missing.
+- K5: the SPA moves from `web/` to `frontend/` and is served from
+  `src/karr/web/static/` with relative asset paths; an AuthGate asks for the
+  admin token, keeps it in `sessionStorage` and sends it as a bearer (K-D1);
+  the Dashboard survives `gpus: null` and a missing `disk` section (K-D17);
+  every mutation confirms destructive actions and reports errors as toasts, and
+  the API client rejects non-JSON bodies (K-D18); the log viewer reads the SSE
+  relay over `fetch` (so the bearer can be sent), caps the buffer at 5 000
+  lines, unescapes the frames, reconnects with backoff and stops on
+  `event: end`/`event: error` (K-D2); clipboard fallback for plain-http pages;
+  ARIA roles on the nav, progress bars, dialogs and the log; Vitest suite.

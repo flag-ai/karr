@@ -17,6 +17,9 @@ karr migrate up
 karr serve
 ```
 
+Open the address in a browser and sign in with the value of `KARR_ADMIN_TOKEN`;
+the SPA keeps it in `sessionStorage` for the tab and sends it as a bearer token.
+
 ## Development
 
 ```bash
@@ -25,6 +28,23 @@ poetry run pytest tests/unit
 poetry run ruff check src tests && poetry run ruff format --check src tests
 poetry run mypy
 ```
+
+### Frontend
+
+The SPA lives in `frontend/` (React 19, react-router 7, TanStack Query 5,
+Vite 6, TypeScript strict, Vitest). The Docker build compiles it and copies
+`dist/` into `src/karr/web/static/`, which the service serves with an
+`index.html` fallback. For a local run:
+
+```bash
+cd frontend
+npm ci
+npm run lint && npm run typecheck && npm test -- --run
+npm run build && rm -rf ../src/karr/web/static/assets && cp -r dist/. ../src/karr/web/static/
+```
+
+`npm run dev` starts Vite on port 5173 and proxies `/api`, `/health`, `/ready`
+and `/metrics` to a `karr serve` on port 8080.
 
 ## License
 
