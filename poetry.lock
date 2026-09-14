@@ -781,7 +781,7 @@ postgres = ["alembic (>=1.13,<2.0)", "psycopg[binary] (>=3.1,<4.0)", "sqlalchemy
 type = "git"
 url = "https://github.com/flag-ai/commons"
 reference = "rewrite/python"
-resolved_reference = "f1ab49f2b44dbe79035a50e98b8de872c4b764e6"
+resolved_reference = "3690031d13c554d314e80c5586e3ecedf4014047"
 
 [[package]]
 name = "greenlet"
@@ -790,7 +790,6 @@ description = "Lightweight in-process concurrent programming"
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
-markers = "platform_machine == \"aarch64\" or platform_machine == \"ppc64le\" or platform_machine == \"x86_64\" or platform_machine == \"amd64\" or platform_machine == \"AMD64\" or platform_machine == \"win32\" or platform_machine == \"WIN32\""
 files = [
     {file = "greenlet-3.5.6-cp310-cp310-macosx_11_0_universal2.whl", hash = "sha256:95e7c44d072db623a1aab04ce488cf9533294a77ed9d072cd503a3596f4106ac"},
     {file = "greenlet-3.5.6-cp310-cp310-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:b7d501d5eb5d4f67207df364752ad697465b834268744be7581c18d81d35d41d"},
@@ -3028,4 +3027,4 @@ files = [
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.10"
-content-hash = "25d358fd81023ecc8779c450401ccb17b36cb24ff46484012a3c0d0e94a0e9b1"
+content-hash = "94e67dd2f20cca8f5fbf1dcac56e7c0ae364d9a505b254511f394f0357098ba9"
