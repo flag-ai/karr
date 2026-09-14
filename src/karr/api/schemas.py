@@ -166,3 +166,39 @@ class EnvironmentCreate(_In):
     env: list[str] = Field(default_factory=list)
     mounts: list[str] = Field(default_factory=list)
     command: list[str] = Field(default_factory=list)
+
+
+# --- registrations ------------------------------------------------------------
+
+
+class ProvisionRequest(_In):
+    label: str = Field(max_length=200)
+
+
+class ProvisionOut(BaseModel):
+    """The plaintext token appears here exactly once."""
+
+    id: uuid.UUID
+    token: str
+    install_command: str
+    expires_at: datetime
+
+    @field_serializer("expires_at")
+    def _ser_expires(self, value: datetime) -> str:
+        return rfc3339(value) or ""
+
+
+class RegistrationOut(_Out):
+    OMIT_EMPTY = frozenset({"agent_id", "claimed_at"})
+
+    id: uuid.UUID
+    label: str
+    status: str
+    agent_id: uuid.UUID | None = None
+    created_at: datetime
+    claimed_at: datetime | None = None
+    expires_at: datetime
+
+    @field_serializer("claimed_at", "expires_at")
+    def _ser_ts(self, value: datetime | None) -> str | None:
+        return rfc3339(value)

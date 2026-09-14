@@ -50,6 +50,7 @@ def live_config(database_url: str) -> KarrConfig:
         admin_token=SecretStr(ADMIN),
         secret_key=SecretStr(Fernet.generate_key().decode()),
         trusted_proxies=["10.0.0.0/8"],
+        public_url="https://karr.test",
     )
 
 

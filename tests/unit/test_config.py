@@ -49,6 +49,8 @@ def test_load_custom(env: pytest.MonkeyPatch) -> None:
     env.setenv("KARR_DEFAULT_AGENT_TOKEN", "t")
     env.setenv("KARR_PUBLIC_URL", "https://karr.example.com")
     env.setenv("KARR_ENABLE_HSTS", "true")
+    env.setenv("KARR_ALLOW_INSECURE_INSTALL", "yes")
+    env.setenv("KARR_ALLOWED_HOSTS", "karr.example.com, karr.internal")
     cfg = KarrConfig.load(EnvProvider())
     assert cfg.cors_origins == ["https://a.example", "https://b.example"]
     assert cfg.trusted_proxies == ["10.0.0.0/8", "192.168.1.1"]
@@ -57,6 +59,8 @@ def test_load_custom(env: pytest.MonkeyPatch) -> None:
     assert cfg.default_agent_token.get_secret_value() == "t"
     assert cfg.public_url == "https://karr.example.com"
     assert cfg.enable_hsts is True
+    assert cfg.allow_insecure_install is True
+    assert cfg.allowed_hosts == ["karr.example.com", "karr.internal"]
 
 
 @pytest.mark.parametrize(
@@ -66,7 +70,8 @@ def test_load_custom(env: pytest.MonkeyPatch) -> None:
         ("KARR_SECRET_KEY", "", "KARR_SECRET_KEY"),
         ("KARR_SECRET_KEY", "not-a-fernet-key", "Fernet"),
         ("KARR_REGISTRATION_TTL", "abc", "integer"),
-        ("KARR_REGISTRATION_TTL", "0", "positive"),
+        ("KARR_REGISTRATION_TTL", "0", "between"),
+        ("KARR_REGISTRATION_TTL", "99999999", "between"),
         ("KARR_TRUSTED_PROXIES", "10.0.0/8", "TRUSTED_PROXIES"),
         ("DATABASE_URL", "mysql://x", "invalid connection string"),
     ],

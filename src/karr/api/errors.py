@@ -53,14 +53,23 @@ def _describe_validation(exc: RequestValidationError) -> str:
 def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(ApiError)
     async def _api_error(_: Request, exc: ApiError) -> JSONResponse:
+        build = getattr(exc, "response", None)
+        if callable(build):
+            result: JSONResponse = build()
+            return result
         return error_response(exc.status_code, exc.message)
 
     @app.exception_handler(RequestValidationError)
     async def _validation(_: Request, exc: RequestValidationError) -> JSONResponse:
         # Malformed JSON is a 400 like Go; a well-formed body failing the
         # schema is 422 (K-D5).
-        kinds = {err.get("type") for err in exc.errors()}
-        if "json_invalid" in kinds:
+        errors = exc.errors()
+        kinds = {err.get("type") for err in errors}
+        body_missing = any(
+            err.get("type") == "missing" and tuple(err.get("loc", ())) == ("body",)
+            for err in errors
+        )
+        if "json_invalid" in kinds or body_missing:
             return error_response(400, "invalid request body")
         return error_response(422, _describe_validation(exc))
 

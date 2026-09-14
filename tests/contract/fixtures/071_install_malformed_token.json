@@ -9,5 +9,6 @@
     "X-Content-Type-Options": "nosniff",
     "X-Frame-Options": "DENY"
   },
-  "response_text": "invalid token format\n"
+  "response_text": "invalid token format\n",
+  "notes": "Go: 400 text/plain 'invalid token format' (Python: 400 JSON envelope)"
 }

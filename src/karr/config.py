@@ -13,6 +13,7 @@ from pydantic import Field, SecretStr, field_validator
 
 COMPONENT = "karr"
 DEFAULT_REGISTRATION_TTL = 3600
+MAX_REGISTRATION_TTL = 7 * 24 * 3600
 MIN_ADMIN_TOKEN_LENGTH = 16
 
 
@@ -27,14 +28,16 @@ class KarrConfig(BaseConfig):
     trusted_proxies: list[str] = Field(default_factory=list)
     registration_ttl: int = DEFAULT_REGISTRATION_TTL
     public_url: str = ""
+    allowed_hosts: list[str] = Field(default_factory=list)
     enable_hsts: bool = False
+    allow_insecure_install: bool = False
 
     @field_validator("registration_ttl")
     @classmethod
     def _positive_ttl(cls, value: int) -> int:
-        if value <= 0:
+        if not 0 < value <= MAX_REGISTRATION_TTL:
             raise ValueError(
-                "KARR_REGISTRATION_TTL must be a positive number of seconds"
+                f"KARR_REGISTRATION_TTL must be between 1 and {MAX_REGISTRATION_TTL} seconds"
             )
         return value
 
@@ -116,12 +119,17 @@ class KarrConfig(BaseConfig):
             "trusted_proxies": proxies,
             "registration_ttl": ttl,
             "public_url": provider.get_or_default("KARR_PUBLIC_URL", "").strip(),
-            "enable_hsts": provider.get_or_default("KARR_ENABLE_HSTS", "")
-            .strip()
-            .lower()
-            in ("1", "true", "yes"),
+            "allowed_hosts": _split(provider.get_or_default("KARR_ALLOWED_HOSTS", "")),
+            "enable_hsts": _truthy(provider.get_or_default("KARR_ENABLE_HSTS", "")),
+            "allow_insecure_install": _truthy(
+                provider.get_or_default("KARR_ALLOW_INSECURE_INSTALL", "")
+            ),
         }
         return cls(**fields)
+
+
+def _truthy(value: str) -> bool:
+    return value.strip().lower() in ("1", "true", "yes")
 
 
 def _split(value: str) -> list[str]:
