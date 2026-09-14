@@ -79,6 +79,19 @@ def test_load_rejects(
         KarrConfig.load(EnvProvider())
 
 
+def test_database_url_is_normalized_on_direct_construction() -> None:
+    from cryptography.fernet import Fernet
+    from pydantic import SecretStr
+
+    cfg = KarrConfig(
+        component="karr",
+        database_url=SecretStr("postgres://k:p@db/karr"),
+        admin_token=SecretStr("an-admin-token-that-is-long"),
+        secret_key=SecretStr(Fernet.generate_key().decode()),
+    )
+    assert cfg.database_url.get_secret_value() == "postgresql+psycopg://k:p@db/karr"
+
+
 def test_missing_required(env: pytest.MonkeyPatch) -> None:
     env.delenv("KARR_ADMIN_TOKEN")
     with pytest.raises(ConfigError, match="KARR_ADMIN_TOKEN"):

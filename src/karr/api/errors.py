@@ -11,8 +11,12 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 _log = logging.getLogger(__name__)
 
-# Routing-level errors use the same lowercase style as the Go handlers.
-_FRAMEWORK_MESSAGES = {404: "not found", 405: "method not allowed"}
+# Starlette's own 404/405 details are rewritten to the lowercase style of the
+# Go handlers; a message a router supplied is kept verbatim.
+_FRAMEWORK_DEFAULTS = {
+    "Not Found": "not found",
+    "Method Not Allowed": "method not allowed",
+}
 
 
 class ApiError(Exception):
@@ -63,7 +67,7 @@ def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(StarletteHTTPException)
     async def _http(_: Request, exc: StarletteHTTPException) -> JSONResponse:
         detail = exc.detail if isinstance(exc.detail, str) else "request failed"
-        detail = _FRAMEWORK_MESSAGES.get(exc.status_code, detail)
+        detail = _FRAMEWORK_DEFAULTS.get(detail, detail)
         headers = dict(exc.headers or {})
         response = error_response(exc.status_code, detail)
         for key, value in headers.items():
@@ -81,9 +85,14 @@ def install_error_handlers(app: FastAPI) -> None:
         response = error_response(500, "internal server error")
         # This handler runs in Starlette's outermost error layer, outside the
         # security-headers middleware, so the headers are applied here too.
-        from karr.api.middleware import security_header_pairs
+        from karr.api.middleware import cors_headers_for, security_header_pairs
 
         cfg = getattr(request.app.state, "config", None)
         for key, value in security_header_pairs(bool(cfg and cfg.enable_hsts)):
             response.headers[key.decode()] = value.decode()
+        allowed = list(cfg.cors_origins) if cfg else []
+        for name, header_value in cors_headers_for(
+            request.headers.get("origin"), allowed
+        ).items():
+            response.headers[name] = header_value
         return response

@@ -93,14 +93,31 @@ def mount_spa(app: FastAPI, static_dir: Path = STATIC_DIR) -> None:
             "/assets", StaticFiles(directory=static_dir / "assets"), name="assets"
         )
 
-    @app.get("/{path:path}", include_in_schema=False, response_model=None)
+    @app.api_route(
+        "/api/{path:path}",
+        methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"],
+        include_in_schema=False,
+        response_model=None,
+    )
+    async def unknown_api_route(path: str) -> Response:
+        # Unknown API paths are 404 for every method, as in Go; without this the
+        # GET-only catch-all below would answer 405 to POST/PUT/DELETE.
+        return JSONResponse({"error": "not found"}, status_code=404)
+
+    @app.api_route(
+        "/{path:path}",
+        methods=["GET", "HEAD"],
+        include_in_schema=False,
+        response_model=None,
+    )
     async def spa_fallback(request: Request, path: str) -> Response:
-        if path.startswith("api/"):
-            return JSONResponse({"error": "not found"}, status_code=404)
         if not index.is_file():
             return JSONResponse({"error": "frontend not built"}, status_code=404)
         root = static_dir.resolve()
-        candidate = (static_dir / path).resolve()
-        if candidate.is_relative_to(root) and candidate.is_file():
-            return FileResponse(candidate)
+        try:
+            candidate = (static_dir / path).resolve()
+            if candidate.is_relative_to(root) and candidate.is_file():
+                return FileResponse(candidate)
+        except (OSError, ValueError):  # null bytes, over-long names
+            pass
         return FileResponse(index)

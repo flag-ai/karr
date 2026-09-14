@@ -50,15 +50,19 @@ def serve(host: str | None, port: int | None) -> None:
 
     from karr.app import create_app
 
-    cfg = _load_config()
+    cfg = _load_config(for_uvicorn=True)
     bind_host, bind_port = cfg.bind_address()
     uvicorn.run(
         create_app(cfg),
-        host=host or bind_host,
-        port=port or bind_port,
-        log_config=uvicorn_log_config(
-            DIST_NAME, level=cfg.log_level, fmt=cfg.log_format
-        ),
+        host=host if host is not None else bind_host,
+        port=port if port is not None else bind_port,
+        log_config=None,
+        server_header=False,
+        # X-Forwarded-* are honoured only from KARR_TRUSTED_PROXIES.
+        proxy_headers=bool(cfg.trusted_proxies),
+        forwarded_allow_ips=",".join(cfg.trusted_proxies)
+        if cfg.trusted_proxies
+        else "127.0.0.1",
         timeout_graceful_shutdown=10,
     )
 
@@ -78,10 +82,17 @@ def up() -> None:
 
 @cli.command()
 def openapi() -> None:
-    """Print the OpenAPI schema (used to generate docs/api.md)."""
+    """Print the OpenAPI schema (used to generate docs/api.md). Needs no configuration."""
+    from cryptography.fernet import Fernet
+    from pydantic import SecretStr
+
     from karr.app import create_app
 
-    cfg = _load_config()
+    cfg = KarrConfig(
+        component="karr",
+        admin_token=SecretStr("schema-only-placeholder-token"),
+        secret_key=SecretStr(Fernet.generate_key().decode()),
+    )
     click.echo(
         json.dumps(create_app(cfg, bootstrap=False, spa=False).openapi(), indent=2)
     )

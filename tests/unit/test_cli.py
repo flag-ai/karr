@@ -21,11 +21,8 @@ def test_missing_config_is_a_clean_error(monkeypatch) -> None:  # type: ignore[n
 
 
 def test_openapi_command(monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    from cryptography.fernet import Fernet
-
-    monkeypatch.setenv("DATABASE_URL", "postgres://k:p@db/karr")
-    monkeypatch.setenv("KARR_ADMIN_TOKEN", "an-admin-token-that-is-long")
-    monkeypatch.setenv("KARR_SECRET_KEY", Fernet.generate_key().decode())
+    for k in ("DATABASE_URL", "KARR_ADMIN_TOKEN", "KARR_SECRET_KEY"):
+        monkeypatch.delenv(k, raising=False)
     result = CliRunner().invoke(cli, ["openapi"])
     assert result.exit_code == 0, result.output
     assert '"/api/v1/auth/check"' in result.output

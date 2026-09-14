@@ -38,6 +38,12 @@ class KarrConfig(BaseConfig):
             )
         return value
 
+    @field_validator("database_url")
+    @classmethod
+    def _normalized_database_url(cls, value: SecretStr) -> SecretStr:
+        raw = value.get_secret_value()
+        return SecretStr(normalize_url(raw)) if raw else value
+
     @field_validator("admin_token")
     @classmethod
     def _strong_admin_token(cls, value: SecretStr) -> SecretStr:
@@ -69,9 +75,6 @@ class KarrConfig(BaseConfig):
     @classmethod
     def _load(cls, provider: SecretsProvider) -> KarrConfig:
         base = cls.base_fields(COMPONENT, provider)
-        base["database_url"] = SecretStr(
-            normalize_url(base["database_url"].get_secret_value())
-        )
         admin_token = provider.get("KARR_ADMIN_TOKEN")
         secret_key = provider.get("KARR_SECRET_KEY")
         if not admin_token:

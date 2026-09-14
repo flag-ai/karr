@@ -83,12 +83,28 @@ def test_cors(client: TestClient) -> None:
     assert "access-control-allow-origin" not in other.headers
 
 
-def test_body_limit(client: TestClient, auth: dict[str, str]) -> None:
-    resp = client.post(
-        "/api/v1/auth/check", headers={**auth, "Content-Length": "2000000"}
-    )
-    assert resp.status_code == 413
-    assert resp.json() == {"error": "request body too large"}
+def test_body_limit(config: KarrConfig, auth: dict[str, str]) -> None:
+    app = create_app(config, bootstrap=False, spa=False)
+
+    @app.post("/api/v1/echo")
+    async def echo(payload: dict) -> dict:  # type: ignore[type-arg]
+        return {"n": len(payload)}
+
+    with TestClient(app) as client:
+        declared = client.post(
+            "/api/v1/echo", headers={**auth, "Content-Length": "2000000"}
+        )
+        assert declared.status_code == 413
+        assert declared.json() == {"error": "request body too large"}
+        # A streamed body with no Content-Length is cut off once it exceeds the cap.
+        chunks = (b'{"k": "' + b"x" * 65536 + b'"}' for _ in range(32))
+        streamed = client.post("/api/v1/echo", content=chunks, headers=auth)
+        assert streamed.status_code == 413, streamed.text
+        assert streamed.json() == {"error": "request body too large"}
+        assert streamed.headers["x-frame-options"] == "DENY"
+        ok = client.post("/api/v1/echo", json={"a": 1}, headers=auth)
+        assert ok.status_code == 200
+        assert 'status="413"' in client.get("/metrics").text
 
 
 def test_error_envelope(config: KarrConfig) -> None:
@@ -114,6 +130,13 @@ def test_error_envelope(config: KarrConfig) -> None:
         assert c.get("/api/v1/nope").json() == {"error": "not found"}
         assert c.post("/health").status_code == 405
         assert c.post("/health").json() == {"error": "method not allowed"}
+        crash_cors = c.get(
+            "/api/v1/crash", headers={"Origin": "https://karr.example.com"}
+        )
+        assert (
+            crash_cors.headers["access-control-allow-origin"]
+            == "https://karr.example.com"
+        )
 
 
 def test_spa_fallback(tmp_path: Path) -> None:
@@ -121,6 +144,12 @@ def test_spa_fallback(tmp_path: Path) -> None:
     (static / "assets").mkdir(parents=True)
     (static / "index.html").write_text("<html>karr</html>")
     (static / "assets" / "app.js").write_text("console.log(1)")
+    app_for_nulls = FastAPI()
+    mount_spa(app_for_nulls, static)
+    with TestClient(app_for_nulls) as c:
+        assert c.get("/%00").text == "<html>karr</html>"
+        assert c.get("/" + "a" * 300 + "/x").text == "<html>karr</html>"
+        assert c.post("/agents").status_code == 405
     (tmp_path / "secret.txt").write_text("nope")
     app = FastAPI()
     mount_spa(app, static)
@@ -190,3 +219,22 @@ def test_health_routes_are_registered_before_the_spa(config: KarrConfig) -> None
     assert client.get("/metrics").status_code == 200
     assert client.get("/api/v1/auth/check").status_code == 401
     assert client.get("/api/v1/nope").json() == {"error": "not found"}
+    for method in ("post", "put", "delete"):
+        resp = getattr(client, method)("/api/v1/nope")
+        assert resp.status_code == 404, method
+        assert resp.json() == {"error": "not found"}
+    assert client.get("/%00").status_code == 404  # no SPA build: clean 404, never a 500
+
+
+def test_router_supplied_404_messages_are_kept(config: KarrConfig) -> None:
+    from fastapi import HTTPException
+
+    app = create_app(config, bootstrap=False, spa=False)
+
+    @app.get("/api/v1/custom")
+    async def custom() -> None:
+        raise HTTPException(404, "agent not found")
+
+    with TestClient(app) as c:
+        assert c.get("/api/v1/custom").json() == {"error": "agent not found"}
+        assert c.get("/api/v1/definitely-missing").json() == {"error": "not found"}

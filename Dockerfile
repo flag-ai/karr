@@ -1,4 +1,5 @@
 # ---- Frontend builder ----
+# TODO(K5): frontend/ lands with the SPA port; until then this stage cannot build.
 FROM node:22-slim AS frontend-builder
 WORKDIR /frontend
 COPY frontend/package.json frontend/package-lock.json ./
@@ -16,7 +17,7 @@ WORKDIR /app
 COPY pyproject.toml poetry.lock README.md ./
 RUN poetry install --no-interaction --no-ansi --without dev --no-root
 COPY src/ src/
-COPY --from=frontend-builder /src/karr/web/static src/karr/web/static
+COPY --from=frontend-builder /frontend/dist src/karr/web/static
 RUN poetry install --no-interaction --no-ansi --without dev
 
 # ---- Runtime ----
