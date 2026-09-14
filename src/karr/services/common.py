@@ -43,7 +43,16 @@ def validate_agent_url(url: str) -> str:
 
 
 def is_unique_violation(exc: IntegrityError) -> bool:
-    return getattr(getattr(exc, "orig", None), "sqlstate", None) == "23505"
+    return _sqlstate(exc) == "23505"
+
+
+def is_foreign_key_violation(exc: IntegrityError) -> bool:
+    return _sqlstate(exc) == "23503"
+
+
+def _sqlstate(exc: IntegrityError) -> str | None:
+    state = getattr(getattr(exc, "orig", None), "sqlstate", None)
+    return state if isinstance(state, str) else None
 
 
 def registry_of(request: Request) -> AgentRegistry:

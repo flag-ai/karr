@@ -21,3 +21,13 @@ Python Rewrite Plan and summarised here as the service PRs land.
   registrant's address is validated like an admin-supplied URL (K-D13); per-
   client rate limits on the provisioning routes (K-D23); the control-plane URL
   comes from `KARR_PUBLIC_URL` or a trusted proxy, never the `Host` header.
+- K4: environments with an explicit state machine (K-D3): `start`/`stop`
+  answer 409 instead of 204 when the state does not allow them, and a
+  background reconciler maps BONNIE's container list onto the rows every 30 s
+  (per-agent timeout and isolation), adopting a row left `creating` by a crash
+  or marking it `error`; unknown `agent_id`/`project_id` answer 400 (K-D5);
+  the log stream (K-D2) resolves the row and agent before the headers (404/409
+  instead of an empty 200), relays through a bounded queue with keepalives,
+  escapes frames, and ends with `event: end` or `event: error`; a container
+  BONNIE no longer knows about can still be deleted once the reconciler has
+  marked it missing.

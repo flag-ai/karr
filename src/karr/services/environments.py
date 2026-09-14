@@ -6,6 +6,7 @@ import builtins
 import logging
 import uuid
 from collections.abc import AsyncIterator
+from datetime import datetime, timedelta, timezone
 
 from flag_commons.bonnie import (
     AgentRegistry,
@@ -21,8 +22,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from karr.api.errors import ApiError
 from karr.api.schemas import EnvironmentCreate
-from karr.db.models import Agent, Environment
-from karr.services.common import is_unique_violation
+from karr.db.models import Agent, Environment, Project
+from karr.services.common import is_foreign_key_violation, is_unique_violation
 
 _log = logging.getLogger(__name__)
 
@@ -31,6 +32,19 @@ TRANSITIONS: dict[str, dict[str, str]] = {
     "start": {"stopped": "running"},
     "stop": {"running": "stopped"},
 }
+
+# A row is ``creating`` for at most one BONNIE request (30 s client timeout).
+# Older ``creating`` rows are the leftovers of a crash mid-create: the reconciler
+# adopts their container by name or marks them ``error``, and they may be
+# deleted. Younger ones are in flight and must be left alone, or a reconcile pass
+# could bind a foreign container that merely shares the name.
+CREATE_GRACE = timedelta(seconds=60)
+CREATE_NEVER_COMPLETED = "create never completed"
+CONTAINER_MISSING = "container missing"
+
+
+def _age(env: Environment) -> timedelta:
+    return datetime.now(timezone.utc) - env.created_at
 
 
 class EnvironmentService:
@@ -59,6 +73,10 @@ class EnvironmentService:
             raise ApiError(422, "image is required")
         if await self._s.get(Agent, body.agent_id) is None:
             raise ApiError(400, "agent not found")  # K-D5 (Go: FK violation 500)
+        if body.project_id is not None and (
+            await self._s.get(Project, body.project_id) is None
+        ):
+            raise ApiError(400, "project not found")  # K-D5
 
         env = Environment(
             agent_id=body.agent_id,
@@ -80,6 +98,8 @@ class EnvironmentService:
                 raise ApiError(
                     409, "an environment with that name already exists on this agent"
                 ) from exc  # K-D22
+            if is_foreign_key_violation(exc):  # agent/project deleted meanwhile
+                raise ApiError(400, "agent or project not found") from exc
             raise
         await self._s.refresh(env)
 
@@ -151,6 +171,10 @@ class EnvironmentService:
 
     async def remove(self, env_id: uuid.UUID) -> None:
         env = await self.get(env_id)
+        if env.status == "creating" and _age(env) < CREATE_GRACE:
+            # the create is still in flight; deleting the row now would orphan
+            # the container BONNIE is about to hand back
+            raise ApiError(409, "environment is still being created")
         if env.container_id:
             client = self._client_for(env)
             try:
@@ -158,15 +182,28 @@ class EnvironmentService:
             except BonnieNotFound:
                 pass  # already gone counts as success
             except BonnieError as exc:
-                message = f"remove container failed: {exc.message}"
-                await self._set_status(env.id, "error", message)
-                raise ApiError(502, message) from exc
+                if env.status_message != CONTAINER_MISSING:
+                    message = f"remove container failed: {exc.message}"
+                    await self._set_status(env.id, "error", message)
+                    raise ApiError(502, message) from exc
+                # BONNIE answers 500, not 404, for a container that no longer
+                # exists; the reconciler already established it is gone
+                _log.info(
+                    "environment %s: container %s already missing, dropping row",
+                    env.id,
+                    env.container_id,
+                )
         await self._s.delete(env)
         await self._s.commit()
         _log.info("environment removed: id=%s", env_id)
 
     async def log_lines(self, env_id: uuid.UUID) -> AsyncIterator[str]:
-        """Resolve everything that can fail *before* the SSE headers go out (K-D2)."""
+        """Resolve the row, its container and its agent before the SSE headers go out.
+
+        BONNIE itself is not contacted until the relay pulls the first line, so a
+        container that vanished after the last reconcile pass surfaces as an
+        ``event: error`` frame rather than a status code (K-D2).
+        """
         env = await self.get(env_id)
         if not env.container_id:
             raise ApiError(409, "environment has no container")
@@ -178,9 +215,10 @@ class EnvironmentService:
     ) -> int:
         """K-D3: map BONNIE's container states onto the environments of one agent.
 
-        A row still ``creating`` (a crash between BONNIE's create and our
-        commit) is adopted through its container name, which is unique per
-        agent, so no container is left untracked.
+        A row left ``creating`` by a crash between BONNIE's create and our
+        commit is adopted through its container name (unique per agent) once it
+        is older than :data:`CREATE_GRACE`; if no container exists by then it
+        becomes ``error`` so the operator can delete it.
         """
         by_id = {c.id: c for c in containers}
         by_name = {c.name: c for c in containers}
@@ -195,28 +233,21 @@ class EnvironmentService:
         )
         changed = 0
         for env in rows:
-            container = (
-                by_id.get(env.container_id)
-                if env.container_id
-                else by_name.get(env.name)
-            )
-            if container is None:
-                status, message = "error", "container missing"
-            elif container.state == "running":
-                status, message = "running", ""
-            else:
-                status, message = "stopped", ""
             if env.status == "creating":
-                if container is not None:
-                    env.container_id, env.status, env.status_message = (
-                        container.id,
-                        status,
-                        message,
-                    )
-                    changed += 1
+                if _age(env) < CREATE_GRACE:
+                    continue  # in flight: create() will finish or fail it
+                container = by_name.get(env.name)
+                if container is None:
+                    env.status, env.status_message = "error", CREATE_NEVER_COMPLETED
+                else:
+                    env.container_id = container.id
+                    env.status, env.status_message = _observed(container)
+                changed += 1
                 continue
             if not env.container_id:
                 continue  # an error row without a container has nothing to reconcile
+            container = by_id.get(env.container_id)
+            status, message = _observed(container)
             if env.status != status or env.status_message != message:
                 env.status, env.status_message = status, message
                 changed += 1
@@ -237,3 +268,11 @@ class EnvironmentService:
             .values(status=status, status_message=message)
         )
         await self._s.commit()
+
+
+def _observed(container: ContainerInfo | None) -> tuple[str, str]:
+    if container is None:
+        return "error", CONTAINER_MISSING
+    if container.state == "running":
+        return "running", ""
+    return "stopped", ""

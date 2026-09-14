@@ -72,12 +72,15 @@ async def remove_environment(
     return Response(status_code=204)
 
 
-@router.get("/{env_id}/logs", include_in_schema=True)
+@router.get(
+    "/{env_id}/logs",
+    responses={
+        200: {"content": {"text/event-stream": {}}, "description": "log stream"}
+    },
+)
 async def environment_logs(env_id: str, request: Request, session: Session) -> Response:
     """SSE relay of the container logs (K-D2): keepalives, `event: end`, `event: error`."""
     lines = await _service(request, session).log_lines(
         parse_uuid(env_id, "environment")
     )
-    keepalive = getattr(request.app.state, "sse_keepalive_seconds", None)
-    frames = relay(lines, keepalive_seconds=keepalive) if keepalive else relay(lines)
-    return sse_response(frames)
+    return sse_response(relay(lines))

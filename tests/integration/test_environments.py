@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import functools
 from collections.abc import AsyncIterator
 
 import httpx
@@ -16,6 +18,7 @@ from karr.services.reconcile import reconcile_once
 pytestmark = pytest.mark.integration
 ZERO = "00000000-0000-0000-0000-000000000000"
 BONNIE = "http://gpu-01.test:7777"
+BONNIE2 = "http://gpu-02.test:7777"
 
 
 class _ByteStream(httpx.AsyncByteStream):
@@ -77,10 +80,22 @@ def _url(api: TestClient) -> str:
     return api.app.state.config.database_url.get_secret_value()  # type: ignore[attr-defined]
 
 
-def _agent(api: TestClient, name: str = "gpu-01") -> str:
-    created = api.post(
-        "/api/v1/agents", json={"name": name, "url": BONNIE, "token": "t"}
-    )
+def _set_creating(api: TestClient, eid: str, *, age_seconds: int) -> None:
+    """Simulate a crash mid-create: the row is `creating` with no container."""
+    engine = create_sync_engine(_url(api))
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                "UPDATE karr_environments SET status = 'creating', container_id = '',"
+                " created_at = now() - make_interval(secs => :age) WHERE id = :id"
+            ),
+            {"id": eid, "age": age_seconds},
+        )
+    engine.dispose()
+
+
+def _agent(api: TestClient, name: str = "gpu-01", url: str = BONNIE) -> str:
+    created = api.post("/api/v1/agents", json={"name": name, "url": url, "token": "t"})
     assert created.status_code == 201, created.text
     return created.json()["id"]
 
@@ -98,6 +113,17 @@ def test_environment_lifecycle(api: TestClient) -> None:
     assert bad_agent.status_code == 400 and bad_agent.json() == {
         "error": "agent not found"
     }  # K-D5
+    bad_project = api.post(
+        "/api/v1/environments",
+        json={"agent_id": aid, "project_id": ZERO, "name": "x", "image": "img"},
+    )
+    assert bad_project.status_code == 400 and bad_project.json() == {
+        "error": "project not found"
+    }  # K-D5
+    blank = api.post(
+        "/api/v1/environments", json={"agent_id": aid, "name": "  ", "image": "img"}
+    )
+    assert blank.status_code == 422 and blank.json() == {"error": "name is required"}
     assert (
         api.post(
             "/api/v1/environments", json={"agent_id": aid, "name": "x"}
@@ -281,16 +307,9 @@ def test_reconciliation(api: TestClient) -> None:
     assert (
         row["status"] == "error" and row["status_message"] == "container missing"
     )  # K-D3
-    # a row stuck in `creating` (crash between create and commit) is adopted by name
-    engine = create_sync_engine(_url(api))
-    with engine.begin() as conn:
-        conn.execute(
-            text(
-                "UPDATE karr_environments SET status = 'creating', container_id = '' WHERE id = :id"
-            ),
-            {"id": eid},
-        )
-    engine.dispose()
+    # a row stuck in `creating` (crash between create and commit) is adopted by
+    # name, but only once it is older than the create grace period
+    _set_creating(api, eid, age_seconds=0)
     respx.get(f"{BONNIE}/api/v1/containers").mock(
         return_value=httpx.Response(
             200,
@@ -306,9 +325,70 @@ def test_reconciliation(api: TestClient) -> None:
             ],
         )
     )
+    assert api.portal.call(reconcile_once, sessions, registry) == 0  # in flight
+    assert api.delete(f"/api/v1/environments/{eid}").status_code == 409  # in flight
+    _set_creating(api, eid, age_seconds=600)
     assert api.portal.call(reconcile_once, sessions, registry) == 1
     row = api.get(f"/api/v1/environments/{eid}").json()
     assert row["status"] == "running" and row["container_id"] == "ctr-9"
+    # ... and becomes an error when nothing on the agent carries its name
+    _set_creating(api, eid, age_seconds=600)
+    respx.get(f"{BONNIE}/api/v1/containers").mock(
+        return_value=httpx.Response(200, json=[])
+    )
+    assert api.portal.call(reconcile_once, sessions, registry) == 1
+    row = api.get(f"/api/v1/environments/{eid}").json()
+    assert row["status"] == "error" and "never completed" in row["status_message"]
+    assert api.delete(f"/api/v1/environments/{eid}").status_code == 204
+
+
+@respx.mock
+def test_reconcile_isolates_agents(api: TestClient) -> None:
+    """One agent failing (or hanging) must not stop the pass for the others."""
+    _mock_bonnie(container_state="exited")
+    aid = _agent(api)
+    eid = api.post(
+        "/api/v1/environments", json={"agent_id": aid, "name": "env-1", "image": "img"}
+    ).json()["id"]
+    assert api.post(f"/api/v1/environments/{eid}/start").status_code == 204
+    respx.get(f"{BONNIE2}/health").mock(
+        return_value=httpx.Response(200, json={"healthy": True})
+    )
+    respx.get(f"{BONNIE2}/api/v1/containers").mock(
+        return_value=httpx.Response(500, json={"error": "docker down"})
+    )
+    _agent(api, name="gpu-02", url=BONNIE2)
+    registry = api.app.state.registry  # type: ignore[attr-defined]
+    api.portal.call(registry.poll)
+    assert {a.status for a in registry.agents()} == {"online"}
+    sessions = api.app.state.session_factory  # type: ignore[attr-defined]
+
+    assert api.portal.call(reconcile_once, sessions, registry) == 1
+    assert api.get(f"/api/v1/environments/{eid}").json()["status"] == "stopped"
+
+    async def hang(request: httpx.Request) -> httpx.Response:
+        await asyncio.sleep(5)
+        return httpx.Response(200, json=[])
+
+    respx.get(f"{BONNIE2}/api/v1/containers").mock(side_effect=hang)
+    respx.get(f"{BONNIE}/api/v1/containers").mock(
+        return_value=httpx.Response(200, json=[])
+    )
+    assert (
+        api.portal.call(
+            functools.partial(reconcile_once, per_agent_timeout=0.05),
+            sessions,
+            registry,
+        )
+        == 1
+    )
+    assert api.get(f"/api/v1/environments/{eid}").json()["status"] == "error"
+    # BONNIE answers 500 (not 404) for a container it no longer has; the row is
+    # still deletable because the reconciler already marked it missing
+    respx.delete(f"{BONNIE}/api/v1/containers/ctr-1").mock(
+        return_value=httpx.Response(500, json={"error": "failed to remove container"})
+    )
+    assert api.delete(f"/api/v1/environments/{eid}").status_code == 204
 
 
 def test_environment_routes_require_admin(api: TestClient) -> None:
