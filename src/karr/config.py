@@ -7,9 +7,13 @@ from typing import Any
 from cryptography.fernet import Fernet
 from flag_commons.config import BaseConfig, ConfigError
 from flag_commons.database import DatabaseError, normalize_url
-from flag_commons.install import parse_trusted_proxies
+from flag_commons.install import (
+    InstallScriptError,
+    parse_trusted_proxies,
+    validate_server_url,
+)
 from flag_commons.secrets import SecretsError, SecretsProvider
-from pydantic import Field, SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 
 COMPONENT = "karr"
 DEFAULT_REGISTRATION_TTL = 3600
@@ -28,7 +32,6 @@ class KarrConfig(BaseConfig):
     trusted_proxies: list[str] = Field(default_factory=list)
     registration_ttl: int = DEFAULT_REGISTRATION_TTL
     public_url: str = ""
-    allowed_hosts: list[str] = Field(default_factory=list)
     enable_hsts: bool = False
     allow_insecure_install: bool = False
 
@@ -46,6 +49,18 @@ class KarrConfig(BaseConfig):
     def _normalized_database_url(cls, value: SecretStr) -> SecretStr:
         raw = value.get_secret_value()
         return SecretStr(normalize_url(raw)) if raw else value
+
+    @model_validator(mode="after")
+    def _public_url_is_usable(self) -> KarrConfig:
+        """A bad KARR_PUBLIC_URL fails at boot, not on the first provision request."""
+        if self.public_url:
+            try:
+                validate_server_url(
+                    self.public_url, allow_insecure=self.allow_insecure_install
+                )
+            except InstallScriptError as exc:
+                raise ValueError(f"KARR_PUBLIC_URL: {exc}") from exc
+        return self
 
     @field_validator("admin_token")
     @classmethod
@@ -119,7 +134,6 @@ class KarrConfig(BaseConfig):
             "trusted_proxies": proxies,
             "registration_ttl": ttl,
             "public_url": provider.get_or_default("KARR_PUBLIC_URL", "").strip(),
-            "allowed_hosts": _split(provider.get_or_default("KARR_ALLOWED_HOSTS", "")),
             "enable_hsts": _truthy(provider.get_or_default("KARR_ENABLE_HSTS", "")),
             "allow_insecure_install": _truthy(
                 provider.get_or_default("KARR_ALLOW_INSECURE_INSTALL", "")

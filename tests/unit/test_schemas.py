@@ -82,7 +82,16 @@ def test_validate_agent_url_ok(url: str) -> None:
 
 @pytest.mark.parametrize(
     "url",
-    ["", "gpu:7777", "ftp://gpu", "file:///etc/passwd", "http://", "http://u:p@gpu"],
+    [
+        "",
+        "gpu:7777",
+        "ftp://gpu",
+        "file:///etc/passwd",
+        "http://",
+        "http://u:p@gpu",
+        "http://h:443:7777",
+        "http://h:0",
+    ],
 )
 def test_validate_agent_url_rejects(url: str) -> None:
     with pytest.raises(ApiError) as info:

@@ -16,7 +16,6 @@ from flag_commons.install import (
 )
 from flag_commons.install.fastapi import (
     TokenLookupError,
-    detect_server_url,
     install_router,
 )
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -54,19 +53,16 @@ def _service(request: Request, session: AsyncSession) -> RegistrationService:
 def server_url_for(request: Request) -> str:
     """The control-plane URL embedded in install scripts and one-liners.
 
-    ``KARR_PUBLIC_URL`` wins; otherwise the scheme and host forwarded by a
-    trusted proxy. The request's own ``Host`` header is never used: a forged
-    value would point ``curl | sudo bash`` at an attacker's server.
+    Only ``KARR_PUBLIC_URL`` is used. Neither the request's ``Host`` header nor
+    a proxy's ``X-Forwarded-Host`` is trusted for this: a forged value would
+    point ``curl | sudo bash`` at an attacker's server, and behind a proxy
+    that sets ``X-Forwarded-For`` the peer address is rewritten anyway.
     """
     cfg: KarrConfig = request.app.state.config
     if cfg.public_url:
         return cfg.public_url
-    detected = detect_server_url(request, cfg.trusted_proxies, cfg.allowed_hosts)
-    if detected:
-        return detected
     raise ApiError(
-        503,
-        "KARR_PUBLIC_URL is not configured and the request did not come through a trusted proxy",
+        503, "KARR_PUBLIC_URL is not configured; it is required for provisioning"
     )
 
 
@@ -156,8 +152,7 @@ def public_router(app: FastAPI) -> APIRouter:
     return install_router(
         token_lookup=token_lookup,
         register=register,
-        server_url=server_url_for,  # the same resolver as provision, never the Host header
+        server_url=server_url_for,  # the same resolver as provision, never a header
         trusted_proxies=config.trusted_proxies,
-        allowed_hosts=config.allowed_hosts,
         allow_insecure=config.allow_insecure_install,
     )

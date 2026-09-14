@@ -113,7 +113,11 @@ def create_app(
         )
     if not config.public_url:
         _log.warning(
-            "KARR_PUBLIC_URL is not set: install scripts need a trusted proxy to learn the URL"
+            "KARR_PUBLIC_URL is not set: provisioning will answer 503 until it is"
+        )
+    if not config.trusted_proxies:
+        _log.warning(
+            "KARR_TRUSTED_PROXIES is empty: rate limits key on the direct peer address"
         )
     if not bootstrap:
         # Tests provide their own engine/session factory; give them a registry

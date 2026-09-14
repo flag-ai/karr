@@ -11,7 +11,7 @@ from flag_commons.bonnie import Agent as RegistryAgent
 from flag_commons.bonnie import AgentRegistry
 from flag_commons.install import InstallScriptError, RegistrationFailed, install_command
 from flag_commons.install.fastapi import TokenLookupError
-from flag_commons.install.render import SAFE_ADDRESS
+from flag_commons.install.render import SAFE_HOST
 from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -108,7 +108,7 @@ class RegistrationService:
             update(AgentRegistration)
             .where(
                 AgentRegistration.status == "pending",
-                AgentRegistration.expires_at <= _now(),
+                AgentRegistration.expires_at <= func.now(),
             )
             .values(status="expired")
         )
@@ -125,7 +125,8 @@ class RegistrationService:
         ).scalar_one_or_none()
         if registration is None:
             raise TokenLookupError(404, "registration not found")
-        if registration.status != "pending" or registration.expires_at <= _now():
+        db_now = (await self._s.execute(select(func.now()))).scalar_one()
+        if registration.status != "pending" or registration.expires_at <= db_now:
             raise TokenLookupError(410, "registration is claimed or expired")
         return registration
 
@@ -144,7 +145,7 @@ class RegistrationService:
                 .where(
                     AgentRegistration.token_hash == hash_registration_token(token),
                     AgentRegistration.status == "pending",
-                    AgentRegistration.expires_at > _now(),
+                    AgentRegistration.expires_at > func.now(),
                 )
                 .values(status="claimed", claimed_at=_now())
                 .returning(AgentRegistration.id, AgentRegistration.label)
@@ -155,9 +156,11 @@ class RegistrationService:
             raise RegistrationFailed("invalid or expired registration token")
         registration_id, label = claimed
         host = (address or "").strip() or source_ip
-        if not SAFE_ADDRESS.fullmatch(host):
+        if not SAFE_HOST.fullmatch(host):
             await self._s.rollback()
-            raise RegistrationFailed("address must be a bare hostname or IP address")
+            raise RegistrationFailed(
+                "address must be a bare hostname, IPv4 address or [IPv6] literal"
+            )
         try:
             url = validate_agent_url(f"http://{host}:{port}")  # K-D13 applies here too
         except ApiError as exc:
@@ -186,15 +189,18 @@ class RegistrationService:
                 ) from exc
             raise
         await self._s.refresh(agent)
-        await self._registry.upsert(
-            RegistryAgent(
-                id=str(agent.id),
-                name=agent.name,
-                url=agent.url,
-                token=auth_token,
-                status="offline",
+        try:
+            await self._registry.upsert(
+                RegistryAgent(
+                    id=str(agent.id),
+                    name=agent.name,
+                    url=agent.url,
+                    token=auth_token,
+                    status="offline",
+                )
             )
-        )
+        except Exception as exc:  # noqa: BLE001 - committed already; the reload picks it up
+            _log.warning("registry upsert failed after registration commit: %s", exc)
         _log.info(
             "agent registered via install script: id=%s name=%s url=%s",
             agent.id,

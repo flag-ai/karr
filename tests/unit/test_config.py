@@ -50,7 +50,6 @@ def test_load_custom(env: pytest.MonkeyPatch) -> None:
     env.setenv("KARR_PUBLIC_URL", "https://karr.example.com")
     env.setenv("KARR_ENABLE_HSTS", "true")
     env.setenv("KARR_ALLOW_INSECURE_INSTALL", "yes")
-    env.setenv("KARR_ALLOWED_HOSTS", "karr.example.com, karr.internal")
     cfg = KarrConfig.load(EnvProvider())
     assert cfg.cors_origins == ["https://a.example", "https://b.example"]
     assert cfg.trusted_proxies == ["10.0.0.0/8", "192.168.1.1"]
@@ -60,7 +59,6 @@ def test_load_custom(env: pytest.MonkeyPatch) -> None:
     assert cfg.public_url == "https://karr.example.com"
     assert cfg.enable_hsts is True
     assert cfg.allow_insecure_install is True
-    assert cfg.allowed_hosts == ["karr.example.com", "karr.internal"]
 
 
 @pytest.mark.parametrize(

@@ -33,6 +33,12 @@ def validate_agent_url(url: str) -> str:
         raise ApiError(422, "url must be an http or https URL with a host")
     if parts.username or parts.password:
         raise ApiError(422, "url must not contain credentials")
+    try:
+        port = parts.port  # raises for "h:443:7777" and non-numeric ports
+    except ValueError as exc:
+        raise ApiError(422, "url has an invalid port") from exc
+    if port == 0:
+        raise ApiError(422, "url has an invalid port")
     return url.rstrip("/")
 
 

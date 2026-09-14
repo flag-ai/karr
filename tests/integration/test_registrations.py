@@ -220,6 +220,7 @@ def test_register_rejects_hostile_address(api: TestClient) -> None:
         "a b",
         "attacker.example/path",
         "1.2.3.4 --bad",
+        "1.2.3.4:443",  # would smuggle a port: http://1.2.3.4:443:7777
     ):
         resp = api.post(
             "/api/v1/agents/register",
@@ -231,48 +232,45 @@ def test_register_rejects_hostile_address(api: TestClient) -> None:
             },
         )
         assert resp.status_code == 422, address
-    # the token is still claimable after the rejected attempts
+    # the token is still claimable after the rejected attempts, and IPv6 literals work
     assert api.get(f"/api/v1/install.sh?token={token}").status_code == 200
+    ok = api.post(
+        "/api/v1/agents/register",
+        json={
+            "registration_token": token,
+            "port": 7777,
+            "auth_token": "t",
+            "address": "[fd00::10]",
+        },
+    )
+    assert ok.status_code == 201, ok.text
 
 
-def test_server_url_never_comes_from_the_host_header(
+def test_server_url_never_comes_from_headers(
     live_config: KarrConfig, clean_tables: None
 ) -> None:
     cfg = live_config.model_copy(update={"public_url": ""})
     auth = f"Bearer {live_config.admin_token.get_secret_value()}"
-    # untrusted peer + forged Host: refused rather than embedded in `curl | sudo bash`
+    fwd = {
+        "X-Forwarded-Proto": "https",
+        "X-Forwarded-Host": "evil.example",
+        "Host": "evil.example",
+    }
+    # even from a trusted proxy: refused rather than embedded in `curl | sudo bash`
     with TestClient(
-        create_app(cfg), base_url="http://karr.test", client=("198.51.100.7", 4000)
+        create_app(cfg), base_url="http://karr.test", client=("10.0.0.1", 4000)
     ) as c:
         c.headers["Authorization"] = auth
-        resp = c.post(
-            "/api/v1/agents/provision",
-            json={"label": "x"},
-            headers={"Host": "evil.example"},
-        )
+        resp = c.post("/api/v1/agents/provision", json={"label": "x"}, headers=fwd)
         assert resp.status_code == 503 and "KARR_PUBLIC_URL" in resp.json()["error"]
         assert (
             c.get("/api/v1/agents/registrations").json() == []
         )  # nothing was left behind
-    # trusted proxy forwarding an allowed host works
-    allowed = cfg.model_copy(update={"allowed_hosts": ["karr.public.example"]})
-    with TestClient(
-        create_app(allowed), base_url="http://karr.test", client=("10.0.0.1", 4000)
-    ) as c:
-        c.headers["Authorization"] = auth
-        fwd = {"X-Forwarded-Proto": "https", "X-Forwarded-Host": "karr.public.example"}
-        ok = c.post("/api/v1/agents/provision", json={"label": "y"}, headers=fwd)
-        assert ok.status_code == 201, ok.text
+        c.headers.pop("Authorization")
         assert (
-            "https://karr.public.example/api/v1/install.sh"
-            in ok.json()["install_command"]
+            c.get("/api/v1/install.sh?token=" + "a" * 64, headers=fwd).status_code
+            == 404
         )
-        bad = c.post(
-            "/api/v1/agents/provision",
-            json={"label": "z"},
-            headers={**fwd, "X-Forwarded-Host": "evil.example"},
-        )
-        assert bad.status_code == 503
 
 
 def test_registration_routes_require_admin(api: TestClient) -> None:
