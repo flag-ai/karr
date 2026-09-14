@@ -13,6 +13,9 @@ pytestmark = pytest.mark.anyio
 def test_framing_matches_go() -> None:
     assert data_frame("hello") == "data: hello\n\n"
     assert escape_line("a\r\nb") == "a\\r\\nb"  # K-D2: no frame injection
+    assert (
+        escape_line("C:\\new\\rows") == "C:\\\\new\\\\rows"
+    )  # a literal \n stays literal
     assert data_frame("x\n\ndata: forged") == "data: x\\n\\ndata: forged\n\n"
     assert event_frame("end") == "event: end\ndata: \n\n"
     assert event_frame("error", "boom\n") == "event: error\ndata: boom\\n\n\n"

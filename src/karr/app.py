@@ -126,6 +126,7 @@ def create_app(
     app.state.config = config
     app.state.health = Registry(dist_name=DIST_NAME)
     for name, capacity, refill in (
+        auth.AUTH_LIMIT,
         registrations.PROVISION_LIMIT,
         registrations.REGISTER_LIMIT,
     ):

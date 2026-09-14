@@ -1,5 +1,4 @@
 # ---- Frontend builder ----
-# TODO(K5): frontend/ lands with the SPA port; until then this stage cannot build.
 FROM node:22-slim AS frontend-builder
 WORKDIR /frontend
 COPY frontend/package.json frontend/package-lock.json ./

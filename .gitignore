@@ -14,10 +14,12 @@ htmlcov/
 .env.*
 !.env.example
 # built SPA (produced by `npm run build` in frontend/)
-src/karr/web/static/
+src/karr/web/static/*
 !src/karr/web/static/.gitkeep
 frontend/node_modules/
 frontend/dist/
 .idea/
 .vscode/
 *.swp
+# uv is only used ad hoc for multi-version test runs; poetry.lock is the lock file
+uv.lock
