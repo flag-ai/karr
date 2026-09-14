@@ -1,33 +1,42 @@
-# Stage 1: Build frontend
-FROM node:22-alpine AS web-builder
-WORKDIR /app/web
-COPY web/package*.json ./
-RUN npm ci
-COPY web/ ./
+# ---- Frontend builder ----
+FROM node:22-slim AS frontend-builder
+WORKDIR /frontend
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci --ignore-scripts
+COPY frontend/ ./
 RUN npm run build
 
-# Stage 2: Build Go binary
-FROM golang:1.25-alpine AS go-builder
-RUN apk add --no-cache gcc musl-dev
+# ---- Python builder ----
+FROM python:3.12-slim AS builder
+RUN apt-get update && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install --no-cache-dir poetry==2.* \
+    && poetry config virtualenvs.in-project true
 WORKDIR /app
-COPY go.mod go.sum ./
-RUN go mod download
-COPY . .
-COPY --from=web-builder /app/web/dist ./web/dist
+COPY pyproject.toml poetry.lock README.md ./
+RUN poetry install --no-interaction --no-ansi --without dev --no-root
+COPY src/ src/
+COPY --from=frontend-builder /src/karr/web/static src/karr/web/static
+RUN poetry install --no-interaction --no-ansi --without dev
+
+# ---- Runtime ----
+FROM python:3.12-slim
 ARG VERSION=dev
 ARG COMMIT=unknown
 ARG BUILD_DATE=unknown
-RUN CGO_ENABLED=0 go build -ldflags "\
-  -X github.com/flag-ai/commons/version.Version=${VERSION} \
-  -X github.com/flag-ai/commons/version.Commit=${COMMIT} \
-  -X github.com/flag-ai/commons/version.Date=${BUILD_DATE}" \
-  -o /karr ./cmd/karr
-
-# Stage 3: Final image
-FROM alpine:3.21
-RUN apk add --no-cache ca-certificates tzdata
-COPY --from=go-builder /karr /usr/local/bin/karr
-COPY --from=go-builder /app/migrations /migrations
+RUN groupadd --gid 1000 karr && useradd --uid 1000 --gid karr --create-home karr
+WORKDIR /app
+COPY --from=builder /app/.venv .venv
+COPY --from=builder /app/src src
+COPY pyproject.toml ./
+ENV PATH="/app/.venv/bin:$PATH" \
+    PYTHONUNBUFFERED=1 \
+    FLAG_BUILD_COMMIT=$COMMIT \
+    FLAG_BUILD_DATE=$BUILD_DATE \
+    LISTEN_ADDR=:8080
+USER karr
 EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')" || exit 1
 ENTRYPOINT ["karr"]
 CMD ["serve"]
