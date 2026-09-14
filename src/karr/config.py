@@ -6,13 +6,14 @@ from typing import Any
 
 from cryptography.fernet import Fernet
 from flag_commons.config import BaseConfig, ConfigError
-from flag_commons.database import normalize_url
+from flag_commons.database import DatabaseError, normalize_url
 from flag_commons.install import parse_trusted_proxies
-from flag_commons.secrets import SecretNotFoundError, SecretsProvider
+from flag_commons.secrets import SecretsError, SecretsProvider
 from pydantic import Field, SecretStr, field_validator
 
 COMPONENT = "karr"
 DEFAULT_REGISTRATION_TTL = 3600
+MIN_ADMIN_TOKEN_LENGTH = 16
 
 
 class KarrConfig(BaseConfig):
@@ -37,6 +38,15 @@ class KarrConfig(BaseConfig):
             )
         return value
 
+    @field_validator("admin_token")
+    @classmethod
+    def _strong_admin_token(cls, value: SecretStr) -> SecretStr:
+        if len(value.get_secret_value()) < MIN_ADMIN_TOKEN_LENGTH:
+            raise ValueError(
+                f"KARR_ADMIN_TOKEN must be at least {MIN_ADMIN_TOKEN_LENGTH} characters"
+            )
+        return value
+
     @field_validator("secret_key")
     @classmethod
     def _fernet_key(cls, value: SecretStr) -> SecretStr:
@@ -48,16 +58,22 @@ class KarrConfig(BaseConfig):
 
     @classmethod
     def load(cls, provider: SecretsProvider) -> KarrConfig:
-        """Read every key through ``provider``; missing required keys are ConfigError."""
+        """Read every key through ``provider``; any failure is a ConfigError."""
+        try:
+            return cls._load(provider)
+        except ConfigError:
+            raise
+        except (SecretsError, DatabaseError, ValueError) as exc:
+            raise ConfigError(f"config: {exc}") from exc
+
+    @classmethod
+    def _load(cls, provider: SecretsProvider) -> KarrConfig:
         base = cls.base_fields(COMPONENT, provider)
         base["database_url"] = SecretStr(
             normalize_url(base["database_url"].get_secret_value())
         )
-        try:
-            admin_token = provider.get("KARR_ADMIN_TOKEN")
-            secret_key = provider.get("KARR_SECRET_KEY")
-        except SecretNotFoundError as exc:
-            raise ConfigError(f"config: {exc}") from exc
+        admin_token = provider.get("KARR_ADMIN_TOKEN")
+        secret_key = provider.get("KARR_SECRET_KEY")
         if not admin_token:
             raise ConfigError("config: KARR_ADMIN_TOKEN is required")
         if not secret_key:
@@ -78,6 +94,11 @@ class KarrConfig(BaseConfig):
             )
         except ValueError as exc:
             raise ConfigError(f"config: KARR_TRUSTED_PROXIES: {exc}") from exc
+        origins = _split(provider.get_or_default("KARR_CORS_ORIGINS", ""))
+        if "*" in origins:
+            raise ConfigError(
+                "config: KARR_CORS_ORIGINS must list explicit origins, not *"
+            )
         fields: dict[str, Any] = {
             **base,
             "default_agent_url": provider.get_or_default(
@@ -86,7 +107,7 @@ class KarrConfig(BaseConfig):
             "default_agent_token": SecretStr(
                 provider.get_or_default("KARR_DEFAULT_AGENT_TOKEN", "")
             ),
-            "cors_origins": _split(provider.get_or_default("KARR_CORS_ORIGINS", "")),
+            "cors_origins": origins,
             "admin_token": SecretStr(admin_token),
             "secret_key": SecretStr(secret_key),
             "trusted_proxies": proxies,
@@ -97,10 +118,7 @@ class KarrConfig(BaseConfig):
             .lower()
             in ("1", "true", "yes"),
         }
-        try:
-            return cls(**fields)
-        except ValueError as exc:
-            raise ConfigError(f"config: {exc}") from exc
+        return cls(**fields)
 
 
 def _split(value: str) -> list[str]:

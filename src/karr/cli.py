@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import logging.config
 import sys
 
 import click
@@ -16,11 +18,17 @@ from karr.config import KarrConfig
 from karr.db import MIGRATIONS_DIR
 
 
-def _load_config() -> KarrConfig:
+def _load_config(*, for_uvicorn: bool = False) -> KarrConfig:
     try:
         cfg = KarrConfig.load(provider_from_env())
     except ConfigError as exc:
         raise click.ClickException(str(exc)) from exc
+    if for_uvicorn:
+        # uvicorn's dictConfig clears root handlers, so apply it first and let
+        # its loggers propagate into the handler setup_logging installs next.
+        logging.config.dictConfig(
+            uvicorn_log_config(DIST_NAME, level=cfg.log_level, fmt=cfg.log_format)
+        )
     cfg.setup_logging(dist_name=DIST_NAME)
     return cfg
 
@@ -66,6 +74,17 @@ def up() -> None:
     cfg = _load_config()
     run_migrations(MIGRATIONS_DIR, cfg.database_url.get_secret_value())
     click.echo("migrations complete")
+
+
+@cli.command()
+def openapi() -> None:
+    """Print the OpenAPI schema (used to generate docs/api.md)."""
+    from karr.app import create_app
+
+    cfg = _load_config()
+    click.echo(
+        json.dumps(create_app(cfg, bootstrap=False, spa=False).openapi(), indent=2)
+    )
 
 
 @cli.command()

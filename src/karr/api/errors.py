@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -70,13 +70,6 @@ def install_error_handlers(app: FastAPI) -> None:
             response.headers[key] = value
         return response
 
-    @app.exception_handler(HTTPException)
-    async def _fastapi_http(_: Request, exc: HTTPException) -> JSONResponse:
-        detail = exc.detail if isinstance(exc.detail, str) else "request failed"
-        return error_response(
-            exc.status_code, _FRAMEWORK_MESSAGES.get(exc.status_code, detail)
-        )
-
     @app.exception_handler(Exception)
     async def _unhandled(request: Request, exc: Exception) -> JSONResponse:
         _log.error(
@@ -85,4 +78,12 @@ def install_error_handlers(app: FastAPI) -> None:
             request.url.path,
             exc_info=exc,
         )
-        return error_response(500, "internal server error")
+        response = error_response(500, "internal server error")
+        # This handler runs in Starlette's outermost error layer, outside the
+        # security-headers middleware, so the headers are applied here too.
+        from karr.api.middleware import security_header_pairs
+
+        cfg = getattr(request.app.state, "config", None)
+        for key, value in security_header_pairs(bool(cfg and cfg.enable_hsts)):
+            response.headers[key.decode()] = value.decode()
+        return response

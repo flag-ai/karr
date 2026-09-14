@@ -1,0 +1,20 @@
+{
+  "name": "agents_create_duplicate_name",
+  "notes": "Go returns 500 on the unique violation (K-D5: 409)",
+  "method": "POST",
+  "path": "/api/v1/agents",
+  "body": {
+    "name": "gpu-01",
+    "url": "http://127.0.0.1:34487"
+  },
+  "status": 500,
+  "response_headers": {
+    "Content-Type": "application/json",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY"
+  },
+  "response_json": {
+    "error": "failed to create agent"
+  }
+}

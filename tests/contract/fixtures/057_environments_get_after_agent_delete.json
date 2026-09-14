@@ -1,0 +1,15 @@
+{
+  "name": "environments_get_after_agent_delete",
+  "method": "GET",
+  "path": "/api/v1/environments/e86e76c7-87b4-4c22-ad2b-c5fb51418c16",
+  "status": 404,
+  "response_headers": {
+    "Content-Type": "application/json",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY"
+  },
+  "response_json": {
+    "error": "environment not found"
+  }
+}

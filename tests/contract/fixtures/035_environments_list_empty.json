@@ -1,0 +1,13 @@
+{
+  "name": "environments_list_empty",
+  "method": "GET",
+  "path": "/api/v1/environments",
+  "status": 200,
+  "response_headers": {
+    "Content-Type": "application/json",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY"
+  },
+  "response_json": []
+}

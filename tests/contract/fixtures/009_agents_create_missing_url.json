@@ -1,0 +1,18 @@
+{
+  "name": "agents_create_missing_url",
+  "method": "POST",
+  "path": "/api/v1/agents",
+  "body": {
+    "name": "gpu-01"
+  },
+  "status": 400,
+  "response_headers": {
+    "Content-Type": "application/json",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY"
+  },
+  "response_json": {
+    "error": "name and url are required"
+  }
+}

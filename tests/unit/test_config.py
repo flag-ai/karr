@@ -21,7 +21,7 @@ def env(monkeypatch: pytest.MonkeyPatch) -> pytest.MonkeyPatch:
         ):
             monkeypatch.delenv(k, raising=False)
     monkeypatch.setenv("DATABASE_URL", "postgres://karr:pw@db:5432/karr")
-    monkeypatch.setenv("KARR_ADMIN_TOKEN", "s3cret-admin-token")
+    monkeypatch.setenv("KARR_ADMIN_TOKEN", "s3cret-admin-token-0001")
     monkeypatch.setenv("KARR_SECRET_KEY", KEY)
     return monkeypatch
 
@@ -38,7 +38,7 @@ def test_load_defaults(env: pytest.MonkeyPatch) -> None:
     assert cfg.cors_origins == [] and cfg.trusted_proxies == []
     assert cfg.enable_hsts is False
     assert "s3cret-admin-token" not in repr(cfg) and KEY not in repr(cfg)
-    assert cfg.admin_token.get_secret_value() == "s3cret-admin-token"
+    assert cfg.admin_token.get_secret_value() == "s3cret-admin-token-0001"
 
 
 def test_load_custom(env: pytest.MonkeyPatch) -> None:

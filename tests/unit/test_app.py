@@ -4,6 +4,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from pydantic import BaseModel, ConfigDict
 
 from karr import __version__
 from karr.api.errors import ApiError
@@ -37,8 +38,20 @@ def test_security_headers(client: TestClient) -> None:
     assert resp.headers["x-frame-options"] == "DENY"
     assert resp.headers["x-content-type-options"] == "nosniff"
     assert resp.headers["referrer-policy"] == "strict-origin-when-cross-origin"
-    assert "frame-ancestors 'none'" in resp.headers["content-security-policy"]
+    csp = resp.headers["content-security-policy"]
+    assert "frame-ancestors 'none'" in csp and "base-uri 'none'" in csp
     assert "strict-transport-security" not in resp.headers
+    # Also present on responses produced by outer middleware (413, preflight).
+    big = client.post("/api/v1/auth/check", headers={"Content-Length": "2000000"})
+    assert big.status_code == 413 and big.headers["x-frame-options"] == "DENY"
+    pre = client.options(
+        "/api/v1/auth/check",
+        headers={
+            "Origin": "https://karr.example.com",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+    assert pre.headers["x-frame-options"] == "DENY"
 
 
 def test_hsts_opt_in(config: KarrConfig) -> None:
@@ -95,6 +108,8 @@ def test_error_envelope(config: KarrConfig) -> None:
         crash_resp = c.get("/api/v1/crash")
         assert crash_resp.status_code == 500
         assert crash_resp.json() == {"error": "internal server error"}
+        assert crash_resp.headers["x-frame-options"] == "DENY"
+        assert 'route="/api/v1/crash",status="500"' in c.get("/metrics").text
         assert c.get("/api/v1/nope").status_code == 404
         assert c.get("/api/v1/nope").json() == {"error": "not found"}
         assert c.post("/health").status_code == 405
@@ -122,3 +137,56 @@ def test_spa_without_build(client: TestClient) -> None:
     resp = client.get("/")
     assert resp.status_code == 404
     assert resp.json() == {"error": "frontend not built"}
+
+
+class ThingBody(BaseModel):
+    """Module-level so FastAPI can resolve the postponed annotation."""
+
+    model_config = ConfigDict(extra="forbid")
+    name: str
+    url: str
+
+
+def test_validation_split_400_vs_422(config: KarrConfig, auth: dict[str, str]) -> None:
+    app = create_app(config, bootstrap=False, spa=False)
+
+    @app.post("/api/v1/things", status_code=201)
+    async def create(body: ThingBody) -> dict[str, str]:
+        return {"name": body.name}
+
+    with TestClient(app) as c:
+        malformed = c.post(
+            "/api/v1/things",
+            content=b"{not json",
+            headers={**auth, "Content-Type": "application/json"},
+        )
+        assert malformed.status_code == 400, malformed.text
+        assert malformed.json() == {"error": "invalid request body"}
+        missing = c.post("/api/v1/things", json={"name": "x"}, headers=auth)
+        assert missing.status_code == 422 and missing.json() == {
+            "error": "url is required"
+        }
+        extra = c.post(
+            "/api/v1/things", json={"name": "x", "url": "u", "bogus": 1}, headers=auth
+        )
+        assert extra.status_code == 422 and extra.json() == {
+            "error": "unknown field bogus"
+        }
+        assert (
+            c.post(
+                "/api/v1/things", json={"name": "x", "url": "u"}, headers=auth
+            ).status_code
+            == 201
+        )
+
+
+def test_health_routes_are_registered_before_the_spa(config: KarrConfig) -> None:
+    # Regression: the bootstrap app once added the health router inside the
+    # lifespan, after the SPA catch-all, so /health and /ready were 404 in
+    # production. Without entering the lifespan the routes must still win.
+    app = create_app(config, bootstrap=True)
+    client = TestClient(app)
+    assert client.get("/health").status_code == 200
+    assert client.get("/metrics").status_code == 200
+    assert client.get("/api/v1/auth/check").status_code == 401
+    assert client.get("/api/v1/nope").json() == {"error": "not found"}

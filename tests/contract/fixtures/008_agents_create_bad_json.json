@@ -1,0 +1,16 @@
+{
+  "name": "agents_create_bad_json",
+  "method": "POST",
+  "path": "/api/v1/agents",
+  "raw_body": "{not json",
+  "status": 400,
+  "response_headers": {
+    "Content-Type": "application/json",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY"
+  },
+  "response_json": {
+    "error": "invalid request body"
+  }
+}

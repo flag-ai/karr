@@ -1,0 +1,16 @@
+{
+  "name": "health",
+  "method": "GET",
+  "path": "/health",
+  "status": 200,
+  "response_headers": {
+    "Content-Type": "application/json",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY"
+  },
+  "response_json": {
+    "status": "ok",
+    "version": "dev (commit: unknown, built: unknown)"
+  }
+}

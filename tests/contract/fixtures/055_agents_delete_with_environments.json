@@ -1,0 +1,12 @@
+{
+  "name": "agents_delete_with_environments",
+  "notes": "Go cascades (K-D4: 409 unless force)",
+  "method": "DELETE",
+  "path": "/api/v1/agents/773947ea-1c76-4cfc-b881-a99dac638fb9",
+  "status": 204,
+  "response_headers": {
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY"
+  }
+}

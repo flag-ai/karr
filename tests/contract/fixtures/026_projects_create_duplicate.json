@@ -1,0 +1,19 @@
+{
+  "name": "projects_create_duplicate",
+  "notes": "Go: 500 (K-D5: 409)",
+  "method": "POST",
+  "path": "/api/v1/projects",
+  "body": {
+    "name": "llm-eval"
+  },
+  "status": 500,
+  "response_headers": {
+    "Content-Type": "application/json",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY"
+  },
+  "response_json": {
+    "error": "failed to create project"
+  }
+}

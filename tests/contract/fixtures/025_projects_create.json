@@ -1,0 +1,23 @@
+{
+  "name": "projects_create",
+  "method": "POST",
+  "path": "/api/v1/projects",
+  "body": {
+    "name": "llm-eval",
+    "description": "Evaluation runs"
+  },
+  "status": 201,
+  "response_headers": {
+    "Content-Type": "application/json",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY"
+  },
+  "response_json": {
+    "id": "ecaa8b3e-e847-4ba5-af5e-54065371f714",
+    "name": "llm-eval",
+    "description": "Evaluation runs",
+    "created_at": "2026-09-14T13:58:25.53795-04:00",
+    "updated_at": "2026-09-14T13:58:25.53795-04:00"
+  }
+}

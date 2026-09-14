@@ -1,0 +1,290 @@
+//go:build integration
+
+package integration
+
+// TestCaptureFixtures records request/response pairs for every KARR route so
+// the Python rewrite can replay them (FLAG Python Rewrite Plan §10.1). It runs
+// only when KARR_FIXTURES_DIR is set and writes one JSON file per case.
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"regexp"
+	"strings"
+	"testing"
+
+	"github.com/flag-ai/commons/bonnie"
+	"github.com/flag-ai/commons/health"
+	"github.com/flag-ai/commons/install"
+
+	"github.com/flag-ai/karr/internal/api"
+	"github.com/flag-ai/karr/internal/api/handlers"
+	"github.com/flag-ai/karr/internal/db"
+	"github.com/flag-ai/karr/internal/db/sqlc"
+	"github.com/flag-ai/karr/internal/service"
+)
+
+type fixture struct {
+	Name     string            `json:"name"`
+	Notes    string            `json:"notes,omitempty"`
+	Method   string            `json:"method"`
+	Path     string            `json:"path"`
+	Headers  map[string]string `json:"headers,omitempty"`
+	Body     json.RawMessage   `json:"body,omitempty"`
+	RawBody  string            `json:"raw_body,omitempty"`
+	Status   int               `json:"status"`
+	RespHdrs map[string]string `json:"response_headers"`
+	RespJSON json.RawMessage   `json:"response_json,omitempty"`
+	RespText string            `json:"response_text,omitempty"`
+}
+
+type capturer struct {
+	t      *testing.T
+	client *http.Client
+	base   string
+	dir    string
+	seq    int
+	vars   map[string]string
+}
+
+var uuidRe = regexp.MustCompile(`[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`)
+
+func (c *capturer) do(name, method, path, body string, hdrs map[string]string, notes string) (int, []byte) {
+	c.t.Helper()
+	c.seq++
+	var rdr io.Reader
+	if body != "" {
+		rdr = strings.NewReader(body)
+	}
+	req, err := http.NewRequest(method, c.base+path, rdr)
+	if err != nil {
+		c.t.Fatal(err)
+	}
+	if body != "" && hdrs["Content-Type"] == "" {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	for k, v := range hdrs {
+		req.Header.Set(k, v)
+	}
+	resp, err := c.client.Do(req)
+	if err != nil {
+		c.t.Fatalf("%s %s: %v", method, path, err)
+	}
+	defer resp.Body.Close()
+	data, _ := io.ReadAll(resp.Body)
+
+	f := fixture{Name: name, Notes: notes, Method: method, Path: path, Headers: hdrs, Status: resp.StatusCode, RespHdrs: map[string]string{}}
+	for _, h := range []string{"Content-Type", "Cache-Control", "Access-Control-Allow-Origin", "Access-Control-Allow-Methods", "Access-Control-Allow-Headers", "X-Content-Type-Options", "X-Frame-Options", "Content-Security-Policy", "Referrer-Policy", "Allow"} {
+		if v := resp.Header.Get(h); v != "" {
+			f.RespHdrs[h] = v
+		}
+	}
+	if body != "" {
+		if json.Valid([]byte(body)) {
+			f.Body = json.RawMessage(body)
+		} else {
+			f.RawBody = body
+		}
+	}
+	if json.Valid(data) && strings.Contains(resp.Header.Get("Content-Type"), "json") {
+		f.RespJSON = json.RawMessage(data)
+	} else {
+		f.RespText = string(data)
+	}
+	out, _ := json.MarshalIndent(f, "", "  ")
+	fn := filepath.Join(c.dir, fmt.Sprintf("%03d_%s.json", c.seq, name))
+	if err := os.WriteFile(fn, append(out, '\n'), 0o644); err != nil {
+		c.t.Fatal(err)
+	}
+	return resp.StatusCode, data
+}
+
+func (c *capturer) jsonField(data []byte, key string) string {
+	var m map[string]any
+	_ = json.Unmarshal(data, &m)
+	if v, ok := m[key]; ok {
+		return fmt.Sprint(v)
+	}
+	return ""
+}
+
+func TestCaptureFixtures(t *testing.T) {
+	dir := os.Getenv("KARR_FIXTURES_DIR")
+	if dir == "" {
+		t.Skip("KARR_FIXTURES_DIR not set")
+	}
+	dbURL := os.Getenv("TEST_DATABASE_URL")
+	if dbURL == "" {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx := context.Background()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	if err := db.RunMigrations(findMigrationsPath(t), dbURL, logger); err != nil {
+		t.Fatalf("migrations: %v", err)
+	}
+	pool, err := db.NewPool(ctx, dbURL, logger)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pool.Close)
+	if _, err := pool.Exec(ctx, "TRUNCATE karr_environments, karr_projects, karr_agents, karr_agent_registrations CASCADE"); err != nil {
+		t.Fatal(err)
+	}
+	queries := sqlc.New(pool)
+	mock := newMockBONNIE(t)
+	store := service.NewBonnieRegistryStore(queries)
+	registry := bonnie.NewRegistry(store, 0, logger)
+	agentSvc := service.NewAgentService(queries, registry, logger)
+	projectSvc := service.NewProjectService(queries, logger)
+	envSvc := service.NewEnvironmentService(queries, registry, logger)
+	regSvc := service.NewRegistrationService(queries, registry, logger)
+	hr := health.NewRegistry()
+	hr.Register(health.NewDatabaseChecker(pool))
+	hr.Register(handlers.NewBonnieChecker(registry))
+	installCfg := &install.HandlerConfig{GenerateToken: func(r *http.Request) (string, error) {
+		tok := r.URL.Query().Get("token")
+		if tok == "" {
+			return "", fmt.Errorf("missing token parameter")
+		}
+		return tok, nil
+	}}
+	registerCb := func(reqCtx context.Context, req install.RegisterRequest, sourceIP string) (install.RegisterResult, error) {
+		agent, err := regSvc.Register(reqCtx, req.RegistrationToken, sourceIP, req.Port, req.AuthToken, req.Address)
+		if err != nil {
+			return install.RegisterResult{}, err
+		}
+		return install.RegisterResult{AgentID: agent.ID.String(), Message: "agent registered successfully"}, nil
+	}
+	router := api.NewRouter(&api.RouterConfig{
+		Logger: logger, HealthRegistry: hr, AgentService: agentSvc, ProjectService: projectSvc,
+		EnvironmentService: envSvc, RegistrationService: regSvc, InstallScriptCfg: installCfg,
+		RegisterCallback: registerCb, CORSOrigins: "https://karr.example.com",
+	})
+	srv := httptest.NewServer(router)
+	t.Cleanup(srv.Close)
+	c := &capturer{t: t, client: srv.Client(), base: srv.URL, dir: dir, vars: map[string]string{}}
+
+	// --- health / metrics ---
+	c.do("health", "GET", "/health", "", nil, "")
+	c.do("ready_no_agents", "GET", "/ready", "", nil, "Go returns 503 while no BONNIE agent is online (K-D non-critical fix changes this)")
+	c.do("metrics", "GET", "/metrics", "", nil, "Prometheus text; body is volatile")
+	c.do("cors_preflight", "OPTIONS", "/api/v1/agents", "", map[string]string{"Origin": "https://karr.example.com", "Access-Control-Request-Method": "POST"}, "")
+	c.do("cors_preflight_other_origin", "OPTIONS", "/api/v1/agents", "", map[string]string{"Origin": "https://evil.example", "Access-Control-Request-Method": "POST"}, "")
+
+	// --- agents ---
+	c.do("agents_list_empty", "GET", "/api/v1/agents", "", nil, "")
+	c.do("agents_create_empty_body", "POST", "/api/v1/agents", "", nil, "")
+	c.do("agents_create_bad_json", "POST", "/api/v1/agents", "{not json", nil, "")
+	c.do("agents_create_missing_url", "POST", "/api/v1/agents", `{"name":"gpu-01"}`, nil, "")
+	c.do("agents_create_missing_name", "POST", "/api/v1/agents", `{"url":"`+mock.URL+`"}`, nil, "")
+	c.do("agents_create_unknown_field", "POST", "/api/v1/agents", `{"name":"gpu-x","url":"`+mock.URL+`","bogus":1}`, nil, "Go ignores unknown fields (K-D21 forbids them)")
+	_, body := c.do("agents_create", "POST", "/api/v1/agents", `{"name":"gpu-01","url":"`+mock.URL+`","token":"agent-secret"}`, nil, "token must never be serialized")
+	agentID := c.jsonField(body, "id")
+	c.vars["agent_id"] = agentID
+	c.do("agents_create_duplicate_name", "POST", "/api/v1/agents", `{"name":"gpu-01","url":"`+mock.URL+`"}`, nil, "Go returns 500 on the unique violation (K-D5: 409)")
+	c.do("agents_create_bad_url_scheme", "POST", "/api/v1/agents", `{"name":"gpu-02","url":"ftp://x"}`, nil, "Go accepts any URL (K-D13)")
+	c.do("agents_list_one", "GET", "/api/v1/agents", "", nil, "")
+	c.do("agents_get", "GET", "/api/v1/agents/"+agentID, "", nil, "")
+	c.do("agents_get_missing", "GET", "/api/v1/agents/00000000-0000-0000-0000-000000000000", "", nil, "")
+	c.do("agents_get_bad_uuid", "GET", "/api/v1/agents/not-a-uuid", "", nil, "")
+	registry.Poll(ctx)
+	c.do("agents_status", "GET", "/api/v1/agents/"+agentID+"/status", "", nil, "live from mock BONNIE after one registry poll")
+	c.do("agents_status_missing", "GET", "/api/v1/agents/00000000-0000-0000-0000-000000000000/status", "", nil, "")
+	c.do("ready_with_online_agent", "GET", "/ready", "", nil, "")
+
+	// --- projects ---
+	c.do("projects_list_empty", "GET", "/api/v1/projects", "", nil, "")
+	c.do("projects_create_empty_body", "POST", "/api/v1/projects", "", nil, "")
+	c.do("projects_create_missing_name", "POST", "/api/v1/projects", `{"description":"x"}`, nil, "")
+	_, body = c.do("projects_create", "POST", "/api/v1/projects", `{"name":"llm-eval","description":"Evaluation runs"}`, nil, "")
+	projectID := c.jsonField(body, "id")
+	c.do("projects_create_duplicate", "POST", "/api/v1/projects", `{"name":"llm-eval"}`, nil, "Go: 500 (K-D5: 409)")
+	c.do("projects_list_one", "GET", "/api/v1/projects", "", nil, "")
+	c.do("projects_get", "GET", "/api/v1/projects/"+projectID, "", nil, "")
+	c.do("projects_get_missing", "GET", "/api/v1/projects/00000000-0000-0000-0000-000000000000", "", nil, "")
+	c.do("projects_get_bad_uuid", "GET", "/api/v1/projects/not-a-uuid", "", nil, "")
+	c.do("projects_update_description", "PUT", "/api/v1/projects/"+projectID, `{"description":"Updated"}`, nil, "partial update")
+	c.do("projects_update_name", "PUT", "/api/v1/projects/"+projectID, `{"name":"llm-eval-2"}`, nil, "")
+	c.do("projects_update_empty_name", "PUT", "/api/v1/projects/"+projectID, `{"name":""}`, nil, "Go: 500? (K-D5: 422)")
+	c.do("projects_update_missing", "PUT", "/api/v1/projects/00000000-0000-0000-0000-000000000000", `{"name":"x"}`, nil, "")
+
+	// --- environments ---
+	c.do("environments_list_empty", "GET", "/api/v1/environments", "", nil, "")
+	c.do("environments_create_empty_body", "POST", "/api/v1/environments", "", nil, "")
+	c.do("environments_create_missing_image", "POST", "/api/v1/environments", `{"agent_id":"`+agentID+`","name":"env-1"}`, nil, "")
+	c.do("environments_create_missing_name", "POST", "/api/v1/environments", `{"agent_id":"`+agentID+`","image":"vllm/vllm-openai:latest"}`, nil, "")
+	c.do("environments_create_unknown_agent", "POST", "/api/v1/environments", `{"agent_id":"00000000-0000-0000-0000-000000000000","name":"env-x","image":"img"}`, nil, "Go: FK violation 500 (K-D5: 400)")
+	c.do("environments_create_bad_agent_uuid", "POST", "/api/v1/environments", `{"agent_id":"nope","name":"env-x","image":"img"}`, nil, "")
+	_, body = c.do("environments_create", "POST", "/api/v1/environments", `{"agent_id":"`+agentID+`","project_id":"`+projectID+`","name":"env-1","image":"vllm/vllm-openai:latest","gpu":true,"env":["A=1"],"mounts":["/models:/models"],"command":["python","-m","vllm"]}`, nil, "BONNIE create is called; status becomes stopped")
+	envID := c.jsonField(body, "id")
+	c.do("environments_create_duplicate_name", "POST", "/api/v1/environments", `{"agent_id":"`+agentID+`","name":"env-1","image":"img"}`, nil, "Go allows duplicates (K-D22: 409)")
+	c.do("environments_list_one", "GET", "/api/v1/environments", "", nil, "")
+	c.do("environments_get", "GET", "/api/v1/environments/"+envID, "", nil, "")
+	c.do("environments_get_missing", "GET", "/api/v1/environments/00000000-0000-0000-0000-000000000000", "", nil, "")
+	c.do("environments_get_bad_uuid", "GET", "/api/v1/environments/not-a-uuid", "", nil, "")
+	c.do("environments_start", "POST", "/api/v1/environments/"+envID+"/start", "", nil, "")
+	c.do("environments_get_running", "GET", "/api/v1/environments/"+envID, "", nil, "")
+	c.do("environments_start_again", "POST", "/api/v1/environments/"+envID+"/start", "", nil, "Go has no transition guard (K-D3: 409)")
+	c.do("environments_logs", "GET", "/api/v1/environments/"+envID+"/logs", "", nil, "SSE relay of the mock's four lines")
+	c.do("environments_stop", "POST", "/api/v1/environments/"+envID+"/stop", "", nil, "")
+	c.do("environments_get_stopped", "GET", "/api/v1/environments/"+envID, "", nil, "")
+	c.do("environments_start_missing", "POST", "/api/v1/environments/00000000-0000-0000-0000-000000000000/start", "", nil, "")
+	c.do("environments_logs_missing", "GET", "/api/v1/environments/00000000-0000-0000-0000-000000000000/logs", "", nil, "")
+	c.do("agents_delete_with_environments", "DELETE", "/api/v1/agents/"+agentID, "", nil, "Go cascades (K-D4: 409 unless force)")
+	c.do("environments_list_after_agent_delete", "GET", "/api/v1/environments", "", nil, "")
+	c.do("environments_get_after_agent_delete", "GET", "/api/v1/environments/"+envID, "", nil, "")
+
+	// recreate an agent + environment for the remove path
+	_, body = c.do("agents_create_second", "POST", "/api/v1/agents", `{"name":"gpu-04","url":"`+mock.URL+`"}`, nil, "")
+	agent2 := c.jsonField(body, "id")
+	registry.Reload(ctx)
+	_, body = c.do("environments_create_second", "POST", "/api/v1/environments", `{"agent_id":"`+agent2+`","name":"env-2","image":"img","gpu":false}`, nil, "")
+	env2 := c.jsonField(body, "id")
+	c.do("environments_remove", "DELETE", "/api/v1/environments/"+env2, "", nil, "")
+	c.do("environments_remove_missing", "DELETE", "/api/v1/environments/"+env2, "", nil, "Go: 204 for a missing row (K-D5: 404)")
+	c.do("projects_delete", "DELETE", "/api/v1/projects/"+projectID, "", nil, "")
+	c.do("projects_delete_missing", "DELETE", "/api/v1/projects/"+projectID, "", nil, "Go: 204 (K-D5: 404)")
+	c.do("agents_delete", "DELETE", "/api/v1/agents/"+agent2, "", nil, "")
+	c.do("agents_delete_missing", "DELETE", "/api/v1/agents/"+agent2, "", nil, "Go: 204 (K-D5: 404)")
+
+	// --- registrations / install / register ---
+	c.do("registrations_list_empty", "GET", "/api/v1/agents/registrations", "", nil, "")
+	c.do("provision_empty_body", "POST", "/api/v1/agents/provision", "", nil, "")
+	_, body = c.do("provision", "POST", "/api/v1/agents/provision", `{"label":"gpu-03"}`, nil, "token shown once; install_command format")
+	regID := c.jsonField(body, "id")
+	regToken := c.jsonField(body, "token")
+	c.do("registrations_list_pending", "GET", "/api/v1/agents/registrations", "", nil, "")
+	c.do("install_missing_token", "GET", "/api/v1/install.sh", "", nil, "")
+	c.do("install_malformed_token", "GET", "/api/v1/install.sh?token=bad$token", "", nil, "")
+	c.do("install_unknown_token", "GET", "/api/v1/install.sh?token=deadbeef", "", nil, "Go renders for any well-formed token (K-D7: 404)")
+	c.do("install_ok", "GET", "/api/v1/install.sh?token="+regToken, "", nil, "")
+	c.do("register_get_not_allowed", "GET", "/api/v1/agents/register", "", nil, "")
+	c.do("register_bad_json", "POST", "/api/v1/agents/register", "{", nil, "")
+	c.do("register_missing_fields", "POST", "/api/v1/agents/register", `{"registration_token":"x"}`, nil, "")
+	c.do("register_bad_port", "POST", "/api/v1/agents/register", `{"registration_token":"x","port":70000,"auth_token":"y"}`, nil, "")
+	c.do("register_unknown_token", "POST", "/api/v1/agents/register", `{"registration_token":"deadbeef","port":7777,"auth_token":"y"}`, nil, "")
+	c.do("register_ok", "POST", "/api/v1/agents/register", `{"registration_token":"`+regToken+`","port":7777,"auth_token":"agent-auth","address":"192.168.1.50"}`, map[string]string{"X-Forwarded-For": "203.0.113.9"}, "XFF trusted unconditionally in Go (K-D6)")
+	c.do("register_replay", "POST", "/api/v1/agents/register", `{"registration_token":"`+regToken+`","port":7777,"auth_token":"agent-auth"}`, nil, "second claim of the same token")
+	c.do("registrations_list_claimed", "GET", "/api/v1/agents/registrations", "", nil, "")
+	c.do("agents_list_after_register", "GET", "/api/v1/agents", "", nil, "url should be http://192.168.1.50:7777, name = label")
+	c.do("registrations_delete", "DELETE", "/api/v1/agents/registrations/"+regID, "", nil, "")
+	c.do("registrations_delete_missing", "DELETE", "/api/v1/agents/registrations/"+regID, "", nil, "Go: 204 (K-D5: 404)")
+	c.do("registrations_delete_bad_uuid", "DELETE", "/api/v1/agents/registrations/nope", "", nil, "")
+	c.do("spa_root_without_fs", "GET", "/", "", nil, "harness has no SPA FS")
+	c.do("unknown_api_route", "GET", "/api/v1/nope", "", nil, "")
+
+	vars, _ := json.MarshalIndent(c.vars, "", "  ")
+	_ = os.WriteFile(filepath.Join(dir, "_vars.json"), vars, 0o644)
+	t.Logf("captured %d fixtures into %s", c.seq, dir)
+}

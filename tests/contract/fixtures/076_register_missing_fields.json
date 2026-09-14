@@ -1,0 +1,18 @@
+{
+  "name": "register_missing_fields",
+  "method": "POST",
+  "path": "/api/v1/agents/register",
+  "body": {
+    "registration_token": "x"
+  },
+  "status": 400,
+  "response_headers": {
+    "Content-Type": "application/json",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY"
+  },
+  "response_json": {
+    "error": "registration_token, auth_token, and port are required"
+  }
+}

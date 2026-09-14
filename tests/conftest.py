@@ -12,7 +12,7 @@ from pydantic import SecretStr
 from karr.app import create_app
 from karr.config import KarrConfig
 
-ADMIN_TOKEN = "test-admin-token"
+ADMIN_TOKEN = "test-admin-token-0123456789"
 FERNET_KEY = Fernet.generate_key().decode()
 
 

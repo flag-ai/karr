@@ -1,0 +1,13 @@
+{
+  "name": "unknown_api_route",
+  "method": "GET",
+  "path": "/api/v1/nope",
+  "status": 404,
+  "response_headers": {
+    "Content-Type": "text/plain; charset=utf-8",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY"
+  },
+  "response_text": "404 page not found\n"
+}

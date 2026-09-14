@@ -1,0 +1,20 @@
+{
+  "name": "register_unknown_token",
+  "method": "POST",
+  "path": "/api/v1/agents/register",
+  "body": {
+    "registration_token": "deadbeef",
+    "port": 7777,
+    "auth_token": "y"
+  },
+  "status": 422,
+  "response_headers": {
+    "Content-Type": "application/json",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY"
+  },
+  "response_json": {
+    "error": "registration failed"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "name": "environments_create_missing_name",
+  "method": "POST",
+  "path": "/api/v1/environments",
+  "body": {
+    "agent_id": "773947ea-1c76-4cfc-b881-a99dac638fb9",
+    "image": "vllm/vllm-openai:latest"
+  },
+  "status": 400,
+  "response_headers": {
+    "Content-Type": "application/json",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY"
+  },
+  "response_json": {
+    "error": "name and image are required"
+  }
+}
