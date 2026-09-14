@@ -1,4 +1,9 @@
-"""``/api/v1/agents`` (routes 9–13). Registration routes are mounted first."""
+"""``/api/v1/agents`` (routes 9–13). Registration routes are mounted first.
+
+The output models reproduce the Go ``omitempty`` (a null ``last_seen_at`` is
+omitted); the status route omits the BONNIE sections that could not be
+fetched.
+"""
 
 from __future__ import annotations
 
@@ -8,7 +13,7 @@ from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from karr.api.schemas import AgentCreate, AgentOut
+from karr.api.schemas import AgentCreate, AgentOut, AgentStatusOut
 from karr.db.session import get_session
 from karr.security import require_admin
 from karr.services.agents import AgentService
@@ -54,9 +59,9 @@ async def delete_agent(
     return Response(status_code=204)
 
 
-@router.get("/{agent_id}/status")
+@router.get("/{agent_id}/status", response_model=AgentStatusOut)
 async def agent_status(
     agent_id: str, request: Request, session: Session
 ) -> JSONResponse:
     status = await _service(request, session).status(parse_uuid(agent_id, "agent"))
-    return JSONResponse(status.to_wire())
+    return JSONResponse(status.to_wire())  # keeps nested nulls (gpus: null) like Go

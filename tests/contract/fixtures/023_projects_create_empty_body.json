@@ -11,5 +11,6 @@
   },
   "response_json": {
     "error": "invalid request body"
-  }
+  },
+  "notes": "Go: 400 invalid request body (K-D5: 422 for a missing body)"
 }

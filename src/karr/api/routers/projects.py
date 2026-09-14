@@ -1,4 +1,8 @@
-"""``/api/v1/projects`` (routes 14–18)."""
+"""``/api/v1/projects`` (routes 14–18).
+
+The output models reproduce the Go ``omitempty``: an empty description is
+omitted from the wire, as it was.
+"""
 
 from __future__ import annotations
 

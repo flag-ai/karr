@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 
 pytestmark = pytest.mark.integration
 ZERO = "00000000-0000-0000-0000-000000000000"
+JSON = {"Content-Type": "application/json"}
 
 
 def test_projects_crud(api: TestClient) -> None:
@@ -20,6 +21,9 @@ def test_projects_crud(api: TestClient) -> None:
     assert project["name"] == "llm-eval" and project["description"] == "Evaluation runs"
     assert project["created_at"].endswith("Z")
     pid = project["id"]
+    bare = api.post("/api/v1/projects", json={"name": "bare"}).json()
+    assert "description" not in bare  # Go omitempty
+    assert api.delete(f"/api/v1/projects/{bare['id']}").status_code == 204
 
     assert (
         api.post("/api/v1/projects", json={"name": "llm-eval"}).status_code == 409
@@ -29,14 +33,7 @@ def test_projects_crud(api: TestClient) -> None:
     assert (
         api.post("/api/v1/projects", json={"name": "x", "bogus": 1}).status_code == 422
     )  # K-D21
-    assert (
-        api.post(
-            "/api/v1/projects",
-            content=b"{",
-            headers={"Content-Type": "application/json"},
-        ).status_code
-        == 400
-    )
+    assert api.post("/api/v1/projects", content=b"{", headers=JSON).status_code == 400
 
     assert [p["id"] for p in api.get("/api/v1/projects").json()] == [pid]
     assert api.get(f"/api/v1/projects/{pid}").json()["name"] == "llm-eval"
@@ -56,6 +53,10 @@ def test_projects_crud(api: TestClient) -> None:
     assert (
         api.put(f"/api/v1/projects/{pid}", json={"name": ""}).status_code == 422
     )  # K-D5 (Go: 500)
+    nulls = api.put(f"/api/v1/projects/{pid}", json={"name": None, "description": None})
+    assert (
+        nulls.status_code == 200 and nulls.json()["name"] == "llm-eval-2"
+    )  # null = unchanged, like Go
     other = api.post("/api/v1/projects", json={"name": "other"}).json()
     assert (
         api.put(

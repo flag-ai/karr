@@ -1,5 +1,11 @@
 """Baseline: the four KARR tables (fresh database, plan §5.6).
 
+Deliberate differences from the Go migrations, by plan id: ``token_encrypted``
+(K-D12), ``last_checked_at`` (K-D10), ``agent_id ON DELETE RESTRICT`` (K-D4),
+``UNIQUE (agent_id, name)`` (K-D22), ``status_message``, CHECK constraints on
+every status column, and ``expires_at`` without a server default because the
+application sets it from ``KARR_REGISTRATION_TTL`` (K-D8).
+
 Revision ID: 0001
 Revises:
 Create Date: 2026-09-14
@@ -15,14 +21,6 @@ revision = "0001"
 down_revision = None
 branch_labels = None
 depends_on = None
-
-
-def _ts(nullable: bool = False, default_now: bool = True) -> sa.Column:  # type: ignore[type-arg]
-    return sa.Column(
-        sa.DateTime(timezone=True),
-        nullable=nullable,
-        server_default=sa.text("now()") if default_now else None,
-    )
 
 
 def upgrade() -> None:

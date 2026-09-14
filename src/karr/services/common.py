@@ -22,7 +22,11 @@ def parse_uuid(value: str, what: str) -> uuid.UUID:
 
 
 def validate_agent_url(url: str) -> str:
-    """Only http(s) with a host (K-D13). Private IPs stay allowed by design."""
+    """Only http(s) with a host (K-D13). Private IPs stay allowed by design.
+
+    Trailing slashes are dropped so the same host is stored one way (Go kept
+    the URL verbatim).
+    """
     url = url.strip()
     parts = urlsplit(url)
     if parts.scheme not in ("http", "https") or not parts.hostname:
@@ -34,10 +38,6 @@ def validate_agent_url(url: str) -> str:
 
 def is_unique_violation(exc: IntegrityError) -> bool:
     return getattr(getattr(exc, "orig", None), "sqlstate", None) == "23505"
-
-
-def is_fk_violation(exc: IntegrityError) -> bool:
-    return getattr(getattr(exc, "orig", None), "sqlstate", None) == "23503"
 
 
 def registry_of(request: Request) -> AgentRegistry:

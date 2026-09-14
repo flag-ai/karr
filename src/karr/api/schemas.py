@@ -4,14 +4,26 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, ClassVar
 
 from flag_commons.bonnie import GPUSnapshot, SystemInfoResponse
-from pydantic import BaseModel, ConfigDict, Field, field_serializer
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SerializerFunctionWrapHandler,
+    field_serializer,
+    model_serializer,
+)
 
 
 def rfc3339(value: datetime | None) -> str | None:
-    """Go's encoding/json format: UTC with a trailing ``Z``."""
+    """RFC 3339 in UTC with a trailing ``Z``.
+
+    Go emitted the same instant in the server's local offset with nanosecond
+    precision trimmed of trailing zeros; the contract replay normalises
+    timestamps, so only the instant has to match.
+    """
     if value is None:
         return None
     if value.tzinfo is None:
@@ -21,7 +33,22 @@ def rfc3339(value: datetime | None) -> str | None:
 
 
 class _Out(BaseModel):
+    """Response base with the Go ``omitempty`` rule.
+
+    Keys listed in ``OMIT_EMPTY`` are dropped from the wire when their value is
+    ``None``, ``""`` or an empty list, matching the Go struct tags.
+    """
+
     model_config = ConfigDict(from_attributes=True)
+    OMIT_EMPTY: ClassVar[frozenset[str]] = frozenset()
+
+    @model_serializer(mode="wrap")
+    def _omit_empty(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        data: dict[str, Any] = handler(self)
+        for key in self.OMIT_EMPTY:
+            if key in data and data[key] in (None, "", []):
+                del data[key]
+        return data
 
     @field_serializer("created_at", "updated_at", check_fields=False)
     def _ser_required_ts(self, value: datetime) -> str:
@@ -39,6 +66,8 @@ class _In(BaseModel):
 
 class AgentOut(_Out):
     """The token is never serialized (it is not even a field here)."""
+
+    OMIT_EMPTY = frozenset({"last_seen_at", "last_checked_at"})
 
     id: uuid.UUID
     name: str
@@ -63,14 +92,15 @@ class AgentCreate(_In):
 class AgentStatusOut(BaseModel):
     """``system`` and ``gpu`` are omitted when BONNIE could not be reached."""
 
-    model_config = ConfigDict(extra="ignore")
-
     agent: AgentOut
     system: SystemInfoResponse | None = None
     gpu: GPUSnapshot | None = None
 
     def to_wire(self) -> dict[str, Any]:
-        data: dict[str, Any] = {"agent": self.agent.model_dump(mode="json")}
+        """Omit only the top-level sections; nested nulls (``gpus: null``) stay."""
+        data: dict[str, Any] = {
+            "agent": self.agent.model_dump(mode="json", exclude_defaults=True)
+        }
         if self.system is not None:
             data["system"] = self.system.model_dump(mode="json")
         if self.gpu is not None:
@@ -82,6 +112,8 @@ class AgentStatusOut(BaseModel):
 
 
 class ProjectOut(_Out):
+    OMIT_EMPTY = frozenset({"description"})
+
     id: uuid.UUID
     name: str
     description: str = ""
@@ -105,6 +137,10 @@ class ProjectUpdate(_In):
 
 
 class EnvironmentOut(_Out):
+    OMIT_EMPTY = frozenset(
+        {"project_id", "container_id", "status_message", "env", "mounts", "command"}
+    )
+
     id: uuid.UUID
     project_id: uuid.UUID | None = None
     agent_id: uuid.UUID

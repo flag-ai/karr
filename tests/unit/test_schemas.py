@@ -41,7 +41,9 @@ def test_agent_out_never_has_a_token() -> None:
 
     data = AgentOut.model_validate(Row()).model_dump(mode="json")
     assert "token" not in data and "token_encrypted" not in data
-    assert data["last_seen_at"] is None and data["last_checked_at"].endswith("Z")
+    assert "last_seen_at" not in data and data["last_checked_at"].endswith(
+        "Z"
+    )  # Go omitempty
 
 
 def test_environment_out_defaults() -> None:
@@ -58,8 +60,9 @@ def test_environment_out_defaults() -> None:
     )
     data = out.model_dump(mode="json")
     assert (
-        data["project_id"] is None and data["env"] == [] and data["container_id"] == ""
-    )
+        "project_id" not in data and "env" not in data and "container_id" not in data
+    )  # Go omitempty
+    assert data["gpu"] is False and data["status"] == "creating"
 
 
 def test_project_update_distinguishes_absent_from_empty() -> None:

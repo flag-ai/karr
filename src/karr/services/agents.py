@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import builtins
 import logging
 import uuid
+from collections.abc import Sequence
 
 from flag_commons.bonnie import Agent as RegistryAgent
 from flag_commons.bonnie import AgentRegistry, BonnieError, BonnieNotFound
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -28,7 +30,7 @@ class AgentService:
         self._registry = registry
         self._cipher = cipher
 
-    async def list(self) -> list[Agent]:
+    async def list(self) -> builtins.list[Agent]:  # noqa: A003 - the Go service API
         return list(
             (await self._s.execute(select(Agent).order_by(Agent.name))).scalars().all()
         )
@@ -64,42 +66,77 @@ class AgentService:
         return agent
 
     async def delete(self, agent_id: uuid.UUID, *, force: bool = False) -> None:
-        """K-D4: 409 while environments exist; ``force`` removes their containers first."""
+        """K-D4: 409 while environments exist; ``force`` removes their containers first.
+
+        Container removal happens before the delete transaction. If any
+        container cannot be removed the rows are kept and the call answers 409
+        naming them, so an operator is never told a workload is gone while it
+        is still running.
+        """
         agent = await self.get(agent_id)
-        envs = list(
-            (
-                await self._s.execute(
-                    select(Environment).where(Environment.agent_id == agent_id)
+        agent_name = agent.name
+        rows = (
+            await self._s.execute(
+                select(Environment.name, Environment.container_id).where(
+                    Environment.agent_id == agent_id
                 )
             )
-            .scalars()
-            .all()
-        )
+        ).all()
+        envs = [(name, container_id) for name, container_id in rows]
         if envs and not force:
             raise ApiError(
                 409,
                 f"agent has {len(envs)} environment(s); delete them or pass force=true",
             )
+        await (
+            self._s.rollback()
+        )  # release the read transaction before talking to BONNIE
+
         if envs:
-            client = self._registry.get(str(agent_id))
-            for env in envs:
-                if env.container_id and client is not None:
-                    try:
-                        await client.remove_container(env.container_id)
-                    except BonnieNotFound:
-                        pass
-                    except BonnieError as exc:  # best effort, logged
-                        _log.warning(
-                            "could not remove container during forced agent delete: env=%s error=%s",
-                            env.id,
-                            exc,
-                        )
-                await self._s.delete(env)
-            await self._s.flush()  # environments first: the FK is RESTRICT
-        await self._s.delete(agent)
-        await self._s.commit()
+            failed = await self._remove_containers(agent_id, agent_name, envs)
+            if failed:
+                raise ApiError(
+                    409,
+                    "could not remove container(s) on the agent: " + ", ".join(failed),
+                )
+            await self._s.execute(
+                delete(Environment).where(Environment.agent_id == agent_id)
+            )
+        await self._s.execute(delete(Agent).where(Agent.id == agent_id))
+        try:
+            await self._s.commit()
+        except IntegrityError as exc:
+            await self._s.rollback()
+            raise ApiError(
+                409, "agent gained environments while being deleted; retry"
+            ) from exc
         await self._registry.remove(str(agent_id))
-        _log.info("agent deleted: id=%s name=%s", agent_id, agent.name)
+        _log.info("agent deleted: id=%s name=%s", agent_id, agent_name)
+
+    async def _remove_containers(
+        self, agent_id: uuid.UUID, agent_name: str, envs: Sequence[tuple[str, str]]
+    ) -> builtins.list[str]:
+        client = self._registry.get(str(agent_id))
+        with_containers = [(name, cid) for name, cid in envs if cid]
+        if not with_containers:
+            return []
+        if client is None:
+            _log.warning(
+                "no BONNIE client registered for agent %s; cannot remove %d container(s)",
+                agent_name,
+                len(with_containers),
+            )
+            return [name for name, _ in with_containers]
+        failed: builtins.list[str] = []
+        for name, container_id in with_containers:
+            try:
+                await client.remove_container(container_id)
+            except BonnieNotFound:
+                continue  # already gone counts as removed
+            except BonnieError as exc:
+                _log.warning("could not remove container: env=%s error=%s", name, exc)
+                failed.append(name)
+        return failed
 
     async def status(self, agent_id: uuid.UUID) -> AgentStatusOut:
         """Live system and GPU info; BONNIE failures are omitted, the call still succeeds."""

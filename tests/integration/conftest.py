@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import Iterator
 
 import pytest
 from cryptography.fernet import Fernet
@@ -79,9 +79,3 @@ def api(live_config: KarrConfig, clean_tables: None) -> Iterator[TestClient]:
     ) as client:
         client.headers["Authorization"] = f"Bearer {ADMIN}"
         yield client
-
-
-async def _noop() -> AsyncIterator[
-    None
-]:  # pragma: no cover - keeps AsyncIterator imported for mypy
-    yield

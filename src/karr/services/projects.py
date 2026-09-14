@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import builtins
 import uuid
 
 from sqlalchemy import select
@@ -18,7 +19,7 @@ class ProjectService:
     def __init__(self, session: AsyncSession) -> None:
         self._s = session
 
-    async def list(self) -> list[Project]:
+    async def list(self) -> builtins.list[Project]:
         return list(
             (await self._s.execute(select(Project).order_by(Project.name)))
             .scalars()
@@ -49,14 +50,19 @@ class ProjectService:
 
     async def update(self, project_id: uuid.UUID, body: ProjectUpdate) -> Project:
         project = await self.get(project_id)
-        fields = body.model_dump(exclude_unset=True)
+        # Absent and explicit-null fields are both "unchanged", as with Go's *string.
+        fields = {
+            k: v
+            for k, v in body.model_dump(exclude_unset=True).items()
+            if v is not None
+        }
         if "name" in fields:
-            name = (fields["name"] or "").strip()
+            name = fields["name"].strip()
             if not name:
                 raise ApiError(422, "name is required")
             project.name = name
         if "description" in fields:
-            project.description = (fields["description"] or "").strip()
+            project.description = fields["description"].strip()
         try:
             await self._s.commit()
         except IntegrityError as exc:

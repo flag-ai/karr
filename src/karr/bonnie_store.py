@@ -35,20 +35,23 @@ class KarrRegistryStore:
         agents: list[RegistryAgent] = []
         for row in rows:
             try:
-                token = self._cipher.decrypt(row.token_encrypted)
+                decrypted = self._cipher.decrypt(row.token_encrypted)
             except ValueError as exc:
+                # Never poll or operate with a missing token: leave the agent out
+                # of the registry so it shows as unreachable instead of silently
+                # downgrading to unauthenticated calls.
                 _log.error(
-                    "agent %s token cannot be decrypted; polling without a token: %s",
+                    "agent %s token cannot be decrypted with KARR_SECRET_KEY; skipping: %s",
                     row.name,
                     exc,
                 )
-                token = ""
+                continue
             agents.append(
                 RegistryAgent(
                     id=str(row.id),
                     name=row.name,
                     url=row.url,
-                    token=token,
+                    token=decrypted,
                     status=row.status,
                     last_seen_at=row.last_seen_at,
                     last_checked_at=row.last_checked_at,

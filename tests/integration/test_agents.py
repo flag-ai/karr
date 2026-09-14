@@ -6,9 +6,12 @@ import httpx
 import pytest
 import respx
 from fastapi.testclient import TestClient
-from sqlalchemy import select, text
+from flag_commons.database import create_sync_engine
+from pydantic import SecretStr
+from sqlalchemy import text
 
-from karr.db.models import Agent
+from karr.app import create_app
+from karr.config import KarrConfig
 
 pytestmark = pytest.mark.integration
 ZERO = "00000000-0000-0000-0000-000000000000"
@@ -51,6 +54,10 @@ def _mock_bonnie() -> None:
     )
 
 
+def _db_url(api: TestClient) -> str:
+    return api.app.state.config.database_url.get_secret_value()  # type: ignore[attr-defined]
+
+
 @respx.mock
 def test_agents_crud_and_status(api: TestClient) -> None:
     _mock_bonnie()
@@ -71,20 +78,12 @@ def test_agents_crud_and_status(api: TestClient) -> None:
         and "token_encrypted" not in agent
         and "agent-secret" not in created.text
     )
+    assert "last_seen_at" not in agent  # Go omitempty: null keys are omitted
     aid = agent["id"]
 
-    # stored encrypted, not in plaintext
-    engine = api.app.state.engine  # type: ignore[attr-defined]
-    with (
-        __import__("flag_commons.database", fromlist=["create_sync_engine"])
-        .create_sync_engine(
-            api.app.state.config.database_url.get_secret_value()  # type: ignore[attr-defined]
-        )
-        .connect() as conn
-    ):
+    with create_sync_engine(_db_url(api)).connect() as conn:
         stored = conn.execute(text("SELECT token_encrypted FROM karr_agents")).scalar()
-    assert stored and "agent-secret" not in stored
-    assert engine is not None
+    assert stored and "agent-secret" not in stored  # encrypted at rest (K-D12)
 
     assert (
         api.post("/api/v1/agents", json={"name": "gpu-01", "url": BONNIE}).status_code
@@ -104,14 +103,12 @@ def test_agents_crud_and_status(api: TestClient) -> None:
         api.post("/api/v1/agents", json={"name": "", "url": BONNIE}).status_code == 422
     )
     assert api.post("/api/v1/agents", json={"url": BONNIE}).status_code == 422
-    assert (
-        api.post(
-            "/api/v1/agents",
-            content=b"{not json",
-            headers={"Content-Type": "application/json"},
-        ).status_code
-        == 400
+    malformed = api.post(
+        "/api/v1/agents",
+        content=b"{not json",
+        headers={"Content-Type": "application/json"},
     )
+    assert malformed.status_code == 400
 
     assert api.get(f"/api/v1/agents/{aid}").json()["id"] == aid
     assert api.get(f"/api/v1/agents/{ZERO}").json() == {"error": "agent not found"}
@@ -122,8 +119,8 @@ def test_agents_crud_and_status(api: TestClient) -> None:
     assert registry.get(aid) is not None
     api.portal.call(registry.poll)
     listed = api.get("/api/v1/agents").json()
-    assert listed[0]["status"] == "online" and listed[0]["last_seen_at"] is not None
-    assert listed[0]["last_checked_at"] is not None  # K-D10
+    assert listed[0]["status"] == "online" and listed[0]["last_seen_at"].endswith("Z")
+    assert listed[0]["last_checked_at"].endswith("Z")  # K-D10
 
     status = api.get(f"/api/v1/agents/{aid}/status")
     assert status.status_code == 200, status.text
@@ -135,8 +132,15 @@ def test_agents_crud_and_status(api: TestClient) -> None:
 
     # BONNIE errors are omitted, the call still succeeds
     respx.get(f"{BONNIE}/api/v1/system/info").mock(return_value=httpx.Response(500))
+    respx.get(f"{BONNIE}/api/v1/gpu/status").mock(
+        side_effect=httpx.ConnectError("down")
+    )
     degraded = api.get(f"/api/v1/agents/{aid}/status").json()
-    assert "system" not in degraded and "gpu" in degraded
+    assert (
+        "system" not in degraded
+        and "gpu" not in degraded
+        and degraded["agent"]["id"] == aid
+    )
 
     assert api.delete(f"/api/v1/agents/{aid}").status_code == 204
     assert api.delete(f"/api/v1/agents/{aid}").status_code == 404  # K-D5 (Go: 204)
@@ -146,20 +150,15 @@ def test_agents_crud_and_status(api: TestClient) -> None:
 @respx.mock
 def test_agent_delete_with_environments(api: TestClient) -> None:
     _mock_bonnie()
-    respx.delete(f"{BONNIE}/api/v1/containers/ctr-1").mock(
-        return_value=httpx.Response(204)
-    )
     aid = api.post("/api/v1/agents", json={"name": "gpu-02", "url": BONNIE}).json()[
         "id"
     ]
-    from flag_commons.database import create_sync_engine
-
-    url = api.app.state.config.database_url.get_secret_value()  # type: ignore[attr-defined]
-    engine = create_sync_engine(url)
+    engine = create_sync_engine(_db_url(api))
     with engine.begin() as conn:
         conn.execute(
             text(
-                "INSERT INTO karr_environments (agent_id, name, image, container_id, status) VALUES (:a, 'env-1', 'img', 'ctr-1', 'stopped')"
+                "INSERT INTO karr_environments (agent_id, name, image, container_id, status) "
+                "VALUES (:a, 'env-1', 'img', 'ctr-1', 'stopped'), (:a, 'env-2', 'img', 'ctr-2', 'stopped')"
             ),
             {"a": aid},
         )
@@ -167,6 +166,24 @@ def test_agent_delete_with_environments(api: TestClient) -> None:
     assert (
         blocked.status_code == 409 and "environment" in blocked.json()["error"]
     )  # K-D4
+
+    # A container that cannot be removed keeps the rows and names it (no false 204).
+    respx.delete(f"{BONNIE}/api/v1/containers/ctr-1").mock(
+        return_value=httpx.Response(204)
+    )
+    respx.delete(f"{BONNIE}/api/v1/containers/ctr-2").mock(
+        return_value=httpx.Response(500)
+    )
+    partial = api.delete(f"/api/v1/agents/{aid}?force=true")
+    assert partial.status_code == 409 and "env-2" in partial.json()["error"]
+    with engine.connect() as conn:
+        assert (
+            conn.execute(text("SELECT count(*) FROM karr_environments")).scalar() == 2
+        )
+
+    respx.delete(f"{BONNIE}/api/v1/containers/ctr-2").mock(
+        return_value=httpx.Response(404)
+    )
     forced = api.delete(f"/api/v1/agents/{aid}?force=true")
     assert forced.status_code == 204, forced.text
     with engine.connect() as conn:
@@ -176,23 +193,36 @@ def test_agent_delete_with_environments(api: TestClient) -> None:
     engine.dispose()
 
 
-def test_default_agent_seeding(live_config, clean_tables) -> None:  # type: ignore[no-untyped-def]
-    from pydantic import SecretStr
+def test_agents_require_admin(api: TestClient) -> None:
+    api.headers.pop("Authorization")
+    assert api.get("/api/v1/agents").status_code == 401
+    assert (
+        api.post("/api/v1/agents", json={"name": "x", "url": BONNIE}).status_code == 401
+    )
+    assert api.get(f"/api/v1/agents/{ZERO}").status_code == 401
+    assert api.delete(f"/api/v1/agents/{ZERO}").status_code == 401
+    assert api.get(f"/api/v1/agents/{ZERO}/status").status_code == 401
 
-    from karr.app import create_app
 
+def test_default_agent_seeding(live_config: KarrConfig, clean_tables: None) -> None:
     cfg = live_config.model_copy(
         update={
-            "default_agent_url": "http://default.test:7777",
+            "default_agent_url": "http://default.test:7777/",
             "default_agent_token": SecretStr("tok"),
         }
     )
+    auth = f"Bearer {live_config.admin_token.get_secret_value()}"
     for _ in range(2):  # idempotent across restarts
         with TestClient(create_app(cfg)) as client:
-            client.headers["Authorization"] = (
-                f"Bearer {live_config.admin_token.get_secret_value()}"
-            )
+            client.headers["Authorization"] = auth
             agents = client.get("/api/v1/agents").json()
             assert [a["name"] for a in agents] == ["default"]
             assert agents[0]["url"] == "http://default.test:7777"
-    _ = select(Agent)
+    bad = live_config.model_copy(
+        update={"default_agent_url": "ftp://admin:pw@nope:21/"}
+    )
+    with TestClient(create_app(bad)) as client:
+        client.headers["Authorization"] = auth
+        assert [a["name"] for a in client.get("/api/v1/agents").json()] == [
+            "default"
+        ]  # rejected, not added

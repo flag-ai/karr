@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -25,9 +27,6 @@ from karr.db import MIGRATIONS_DIR
 from karr.db.session import make_session_factory
 from karr.security import TokenCipher
 from karr.services.seed import ensure_default_agent
-
-BONNIE_POLL_INTERVAL = 30.0
-BONNIE_RELOAD_INTERVAL = 60.0
 
 STATIC_DIR = Path(__file__).parent / "web" / "static"
 
@@ -62,19 +61,20 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             except Exception as exc:  # noqa: BLE001 - seeding is best effort, like Go
                 _log.warning("failed to register default agent: %s", exc)
 
-        registry = AgentRegistry(
-            KarrRegistryStore(sessions, cipher),
-            poll_interval=BONNIE_POLL_INTERVAL,
-            reload_interval=BONNIE_RELOAD_INTERVAL,
-        )
+        registry = AgentRegistry(KarrRegistryStore(sessions, cipher))
         app.state.registry = registry
-        await registry.start()
-
         app.state.health.register(DatabaseChecker(engine))
         app.state.health.register(BonnieAgentsChecker(registry), critical=False)
+        # The first poll probes every agent with retries; run it in the
+        # background so an unreachable host cannot stall startup and /health.
+        starter = asyncio.create_task(registry.start(), name="bonnie-registry-start")
         yield
     finally:
         if registry is not None:
+            if not starter.done():
+                starter.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await starter
             await registry.stop()
         await engine.dispose()
         _log.info("karr stopped")
