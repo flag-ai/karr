@@ -53,7 +53,7 @@ concurrency = ["thread", "greenlet"]  # async SQLAlchemy runs DB code under gree
 
 [tool.coverage.report]
 show_missing = true
-fail_under = 75  # raised as the K2-K4 service PRs land
+fail_under = 85  # enforced by the CI integration job over the whole suite
 
 [tool.ruff]
 target-version = "py310"

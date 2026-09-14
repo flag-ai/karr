@@ -9,5 +9,6 @@
     "X-Content-Type-Options": "nosniff",
     "X-Frame-Options": "DENY"
   },
-  "response_text": "missing token parameter\n"
+  "response_text": "missing token parameter\n",
+  "notes": "Go: 400 text/plain 'missing token parameter' from commons ScriptHandler (Python: 400 JSON envelope)"
 }

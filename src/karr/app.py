@@ -9,7 +9,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, Request, Response
+from fastapi import Depends, FastAPI, Request, Response
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from flag_commons.bonnie import AgentRegistry, BonnieAgentsChecker
@@ -20,7 +20,8 @@ from flag_commons.health.fastapi import health_router
 from karr import DIST_NAME, __version__
 from karr.api.errors import install_error_handlers
 from karr.api.middleware import install_middleware
-from karr.api.routers import agents, auth, metrics, projects
+from karr.api.ratelimit import RateLimiter, rate_limited
+from karr.api.routers import agents, auth, metrics, projects, registrations
 from karr.bonnie_store import KarrRegistryStore
 from karr.config import KarrConfig
 from karr.db import MIGRATIONS_DIR
@@ -101,6 +102,23 @@ def create_app(
     )
     app.state.config = config
     app.state.health = Registry(dist_name=DIST_NAME)
+    for name, capacity, refill in (
+        registrations.PROVISION_LIMIT,
+        registrations.REGISTER_LIMIT,
+    ):
+        setattr(app.state, name, RateLimiter(capacity, refill))
+    if config.allow_insecure_install:
+        _log.warning(
+            "KARR_ALLOW_INSECURE_INSTALL is on: install scripts may phone home over plain http"
+        )
+    if not config.public_url:
+        _log.warning(
+            "KARR_PUBLIC_URL is not set: provisioning will answer 503 until it is"
+        )
+    if not config.trusted_proxies:
+        _log.warning(
+            "KARR_TRUSTED_PROXIES is empty: rate limits key on the direct peer address"
+        )
     if not bootstrap:
         # Tests provide their own engine/session factory; give them a registry
         # and cipher so the routers can run.
@@ -114,7 +132,13 @@ def create_app(
     app.include_router(health_router(app.state.health, DIST_NAME, redact_errors=True))
     app.include_router(metrics.router)
     app.include_router(auth.router)
-    # Static /agents/... routes (registrations, K3) must precede /agents/{id}.
+    # Static /agents/... routes must precede /agents/{id}: registrations first.
+    app.include_router(registrations.admin_router)
+    app.include_router(
+        registrations.public_router(app),
+        prefix="/api/v1",
+        dependencies=[Depends(rate_limited(registrations.REGISTER_LIMIT[0]))],  # K-D23
+    )
     app.include_router(agents.router)
     app.include_router(projects.router)
     if spa:
