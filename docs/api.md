@@ -94,7 +94,7 @@ Query `token=<registration token>`. Serves the BONNIE installer only for a pendi
 
 ### POST /api/v1/agents/register
 
-Called by the installer with the registration token; claims it and creates the agent in one transaction. 401 for an unknown or expired token, 409 for a name clash. Rate limited per client; `X-Forwarded-For` is honoured only from `KARR_TRUSTED_PROXIES`.
+Called by the installer with the registration token; claims it and creates the agent in one transaction. 400 for a malformed body, 422 with a generic `registration failed` for an unknown, expired or already claimed token and for a label that clashes with an existing agent name (the same codes as the Go service, since BONNIE's installer consumes them). Rate limited per client; `X-Forwarded-For` is honoured only from `KARR_TRUSTED_PROXIES`.
 
 **Response 200** — `application/json`
 
