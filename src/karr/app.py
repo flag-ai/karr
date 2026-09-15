@@ -29,12 +29,13 @@ from karr.api.routers import (
     projects,
     registrations,
 )
+from karr.api.sse import StreamSlots
 from karr.bonnie_store import KarrRegistryStore
 from karr.config import KarrConfig
 from karr.db import MIGRATIONS_DIR
 from karr.db.session import make_session_factory
 from karr.security import TokenCipher
-from karr.services.reconcile import Reconciler
+from karr.services.reconcile import Reconciler, ReconcilerChecker
 from karr.services.seed import ensure_default_agent
 
 STATIC_DIR = Path(__file__).parent / "web" / "static"
@@ -80,9 +81,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # background so an unreachable host cannot stall startup and /health.
         starter = asyncio.create_task(registry.start(), name="bonnie-registry-start")
         starter.add_done_callback(_log_task_failure)
-        reconciler = Reconciler(sessions, registry)
+        reconciler = Reconciler(
+            sessions,
+            registry,
+            interval=cfg.reconcile_interval,
+            per_agent_timeout=cfg.reconcile_timeout,
+        )
         reconciler.start()
         app.state.reconciler = reconciler
+        app.state.health.register(ReconcilerChecker(reconciler), critical=False)
         yield
     finally:
         if reconciler is not None:
@@ -125,6 +132,7 @@ def create_app(
     )
     app.state.config = config
     app.state.health = Registry(dist_name=DIST_NAME)
+    app.state.log_slots = StreamSlots()
     for name, capacity, refill in (
         auth.AUTH_LIMIT,
         registrations.PROVISION_LIMIT,

@@ -23,7 +23,9 @@ Session = Annotated[AsyncSession, Depends(get_session)]
 
 
 def _service(request: Request, session: AsyncSession) -> EnvironmentService:
-    return EnvironmentService(session, registry_of(request))
+    return EnvironmentService(
+        session, registry_of(request), slots=request.app.state.log_slots
+    )
 
 
 @router.get("", response_model=list[EnvironmentOut])
@@ -80,7 +82,7 @@ async def remove_environment(
 )
 async def environment_logs(env_id: str, request: Request, session: Session) -> Response:
     """SSE relay of the container logs (K-D2): keepalives, `event: end`, `event: error`."""
-    lines = await _service(request, session).log_lines(
+    lease = await _service(request, session).log_lines(
         parse_uuid(env_id, "environment")
     )
-    return sse_response(relay(lines))
+    return sse_response(relay(lease.lines, on_close=lease.release))

@@ -28,6 +28,13 @@ def test_metrics(client: TestClient, auth: dict[str, str]) -> None:
     resp = client.get("/metrics")
     assert resp.status_code == 200
     assert resp.headers["content-type"].startswith("text/plain")
+    assert (
+        'karr_build_info{commit="' in resp.text
+        and f'version="{__version__}"' in resp.text
+    )
+    assert (
+        "python_info{" in resp.text and "process_open_fds" in resp.text
+    )  # dashboard inputs
     assert "karr_http_requests_total" in resp.text
     assert 'route="/api/v1/auth/check"' in resp.text
     assert "process_" in resp.text or "python_info" in resp.text

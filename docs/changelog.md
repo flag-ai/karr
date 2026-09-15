@@ -43,3 +43,15 @@ Python Rewrite Plan and summarised here as the service PRs land.
   lines round-trip); `/api/v1/auth/check` is rate limited per client because
   the sign-in form posts to it; clipboard fallback for plain-http pages;
   ARIA roles on the nav, progress bars, dialogs and the log; Vitest suite.
+- K6: the Grafana dashboard is rebuilt on `karr_http_*`, `process_*` and
+  `python_*` metrics (the Go runtime panels are gone) with `karr_build_info`
+  for the version; `docker-compose.yml` pins images and gains an
+  `observability` profile, `docker-compose.dev.yml` runs `uvicorn --reload`
+  through `karr.asgi:app`; `docs/api.md` is generated from the OpenAPI schema
+  (`make api-docs`, kept current by a test) and `docs/usage.md` walks through
+  the first agent; the README documents every setting. Follow-ups from the K4
+  review: at most 8 log streams per agent (429 past that) and a 4 h stream
+  limit, the relay's cleanup runs the moment a client disconnects, the
+  reconciler runs agents 4 at a time with the database write inside the
+  per-agent timeout, `KARR_RECONCILE_INTERVAL`/`KARR_RECONCILE_TIMEOUT` are
+  configurable, and `/ready` carries an informational `reconciler` check.
