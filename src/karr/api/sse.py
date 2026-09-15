@@ -15,18 +15,25 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
-from collections import Counter
+import time
 from collections.abc import AsyncIterator, Callable
+from dataclasses import dataclass
+from typing import Any
 
 from fastapi.responses import StreamingResponse
+from flag_commons.bonnie import BonnieError
 from starlette.types import Receive, Scope, Send
 
 DEFAULT_KEEPALIVE_SECONDS = 15.0
 QUEUE_MAX_LINES = 1000  # backpressure: a stalled client stops the upstream read
 MAX_STREAM_SECONDS = 4 * 3600.0  # a viewer left open must not hold a connection forever
 MAX_STREAMS_PER_KEY = (
-    8  # the per-agent httpx pool is shared with health and control calls
+    8  # open log streams per agent: each is a live docker logs on the host
 )
+MAX_STREAMS_PER_CLIENT = (
+    3  # per (agent, client): one flaky viewer cannot fill the agent's cap
+)
+LEASE_GRACE_SECONDS = 300.0  # a lease older than the stream limit plus this is evicted
 SSE_HEADERS = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
 
 _log = logging.getLogger(__name__)
@@ -47,44 +54,93 @@ def event_frame(event: str, data: str = "") -> str:
 KEEPALIVE_FRAME = ": keepalive\n\n"
 
 
-class StreamSlots:
-    """Counts open relays per key (an agent id) and refuses past the cap.
+@dataclass
+class _Lease:
+    key: str
+    client: str
+    started: float
 
-    Every open log stream holds one connection out of that agent's HTTP pool;
-    unbounded viewers would starve the registry poll and control calls.
+
+class StreamSlots:
+    """Counts open relays per key (an agent id) and per client, refusing past the caps.
+
+    Every open log stream is a live ``docker logs`` on the host; the caps keep
+    one agent from serving unbounded viewers and one client (an operator on a
+    flaky link whose dead relays have not timed out yet) from filling the
+    agent's cap. Leases also expire after the stream limit plus a grace, so a
+    release that never came cannot lock an agent out for the process lifetime.
     """
 
-    def __init__(self, per_key: int = MAX_STREAMS_PER_KEY) -> None:
+    def __init__(
+        self,
+        per_key: int = MAX_STREAMS_PER_KEY,
+        per_client: int = MAX_STREAMS_PER_CLIENT,
+        *,
+        max_age: float = MAX_STREAM_SECONDS + LEASE_GRACE_SECONDS,
+    ) -> None:
         self.per_key = per_key
-        self._open: Counter[str] = Counter()
+        self.per_client = per_client
+        self.max_age = max_age
+        self._leases: dict[int, _Lease] = {}
+        self._next = 1
 
-    def open(self, key: str) -> int:
-        return self._open[key]
+    def _evict_expired(self, now: float) -> None:
+        for lease_id, lease in list(self._leases.items()):
+            if now - lease.started > self.max_age:
+                _log.warning(
+                    "log stream lease for agent %s expired without release", lease.key
+                )
+                del self._leases[lease_id]
 
-    def acquire(self, key: str) -> Callable[[], None]:
+    def open(self, key: str, client: str | None = None) -> int:
+        """Open streams for ``key`` (optionally only those of ``client``)."""
+        return sum(
+            1
+            for lease in self._leases.values()
+            if lease.key == key and (client is None or lease.client == client)
+        )
+
+    def acquire(self, key: str, client: str = "") -> Callable[[], None]:
         """Take a slot and return the idempotent release callback, or raise."""
-        if self._open[key] >= self.per_key:
-            raise TooManyStreams(key, self.per_key)
-        self._open[key] += 1
-        released = False
+        now = time.monotonic()
+        self._evict_expired(now)
+        if self.open(key) >= self.per_key:
+            raise TooManyStreams(
+                f"too many open log streams for this agent (limit {self.per_key})"
+            )
+        if self.open(key, client) >= self.per_client:
+            raise TooManyStreams(
+                f"too many open log streams from this client for the agent (limit {self.per_client})"
+            )
+        lease_id = self._next
+        self._next += 1
+        self._leases[lease_id] = _Lease(key, client, now)
 
         def release() -> None:
-            nonlocal released
-            if released:
-                return
-            released = True
-            self._open[key] -= 1
-            if self._open[key] <= 0:
-                del self._open[key]
+            self._leases.pop(lease_id, None)
 
         return release
 
 
 class TooManyStreams(Exception):
-    def __init__(self, key: str, limit: int) -> None:
-        super().__init__(f"too many open log streams (limit {limit})")
-        self.key = key
-        self.limit = limit
+    pass
+
+
+_BACKGROUND: set[asyncio.Task[Any]] = set()
+
+
+def _detach(coro: Any) -> None:
+    """Run ``coro`` outside the current cancel scope (a cancelled relay cannot await)."""
+    task = asyncio.get_running_loop().create_task(coro)
+    _BACKGROUND.add(task)
+    task.add_done_callback(_BACKGROUND.discard)
+
+
+async def _close_upstream(lines: AsyncIterator[str]) -> None:
+    aclose = getattr(lines, "aclose", None)
+    if aclose is not None:
+        with contextlib.suppress(Exception):
+            await aclose()
 
 
 async def relay(
@@ -112,9 +168,12 @@ async def relay(
             await queue.put(("end", None))
         except asyncio.CancelledError:
             raise
-        except Exception as exc:  # noqa: BLE001 - reported to the client as an error event
+        except BonnieError as exc:  # sanitised by flag-commons: safe to relay
             _log.warning("log stream ended with error: %s", exc)
-            await queue.put(("error", str(exc) or exc.__class__.__name__))
+            await queue.put(("error", exc.message))
+        except Exception as exc:  # noqa: BLE001 - reported to the client as an error event
+            _log.warning("log stream ended with error: %s", exc, exc_info=exc)
+            await queue.put(("error", f"stream failed: {exc.__class__.__name__}"))
 
     task = asyncio.create_task(pump())
     try:
@@ -142,35 +201,50 @@ async def relay(
                 yield event_frame("error", payload or "stream failed")
                 return
     finally:
-        task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await task
-        aclose = getattr(lines, "aclose", None)
-        if aclose is not None:  # release the upstream BONNIE connection promptly
-            with contextlib.suppress(Exception):
-                await aclose()
-        if on_close is not None:
-            on_close()
+        # A client disconnect reaches us as cancellation, and anyio re-delivers
+        # it at every await: the upstream close (an httpx connection release
+        # that does suspend) must therefore run as a detached task, and the
+        # slot release must not sit behind any await at all.
+        try:
+            task.cancel()
+            _detach(_close_upstream(lines))
+        finally:
+            if on_close is not None:
+                on_close()
 
 
 class SSEResponse(StreamingResponse):
-    """A StreamingResponse that closes its generator the moment the send fails.
+    """A StreamingResponse whose cleanup runs on every exit, started or not.
 
-    Under uvicorn (ASGI spec 2.4) a client disconnect surfaces as an OSError
-    from ``send`` in the consumer, which leaves a plain async generator
-    suspended until the garbage collector finalises it. ``aclosing`` runs the
-    relay's ``finally`` (pump cancel, upstream close, slot release) on every
-    exit path instead.
+    Under uvicorn (ASGI spec 2.3) a client disconnect cancels the streaming
+    task; if the client was gone before the first frame the relay generator
+    was never even started, and ``aclose()`` on an unstarted generator skips
+    its ``finally``. ``on_close`` therefore runs from here as well, and
+    ``aclosing`` covers the spec 2.4 path where a failed ``send`` raises.
     """
+
+    def __init__(
+        self, *args: Any, on_close: Callable[[], None] | None = None, **kwargs: Any
+    ) -> None:
+        super().__init__(*args, **kwargs)
+        self._on_close = on_close
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         iterator = self.body_iterator
-        if hasattr(iterator, "aclose"):
-            async with contextlib.aclosing(iterator):  # type: ignore[type-var]
+        try:
+            if hasattr(iterator, "aclose"):
+                async with contextlib.aclosing(iterator):  # type: ignore[type-var]
+                    await super().__call__(scope, receive, send)
+            else:
                 await super().__call__(scope, receive, send)
-        else:
-            await super().__call__(scope, receive, send)
+        finally:
+            if self._on_close is not None:
+                self._on_close()
 
 
-def sse_response(frames: AsyncIterator[str]) -> StreamingResponse:
-    return SSEResponse(frames, media_type="text/event-stream", headers=SSE_HEADERS)
+def sse_response(
+    frames: AsyncIterator[str], *, on_close: Callable[[], None] | None = None
+) -> StreamingResponse:
+    return SSEResponse(
+        frames, media_type="text/event-stream", headers=SSE_HEADERS, on_close=on_close
+    )

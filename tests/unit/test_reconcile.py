@@ -22,10 +22,21 @@ class _Agent:
 
 
 class _Client:
+    in_flight = 0
+    peak = 0
+
     def __init__(self, behaviour: str) -> None:
         self.behaviour = behaviour
 
     async def list_containers(self) -> list[Any]:
+        _Client.in_flight += 1
+        _Client.peak = max(_Client.peak, _Client.in_flight)
+        try:
+            return await self._answer()
+        finally:
+            _Client.in_flight -= 1
+
+    async def _answer(self) -> list[Any]:
         if self.behaviour == "hang":
             await asyncio.sleep(5)
         if self.behaviour == "bonnie-error":
@@ -61,7 +72,7 @@ class _FakeService:
 
     slow: set[str] = set()
 
-    def __init__(self, session: object, registry: object) -> None:
+    def __init__(self, session: object, registry: object, slots: object) -> None:
         pass
 
     async def reconcile_agent(self, agent_id: uuid.UUID, containers: list[Any]) -> int:
@@ -103,30 +114,35 @@ async def test_pass_isolates_failures_and_timeouts(
     assert any("boom" in r.getMessage() for r in caplog.records)
 
 
-async def test_pass_runs_agents_concurrently(fake_service: type[_FakeService]) -> None:
+async def test_pass_runs_agents_concurrently_up_to_the_limit(
+    fake_service: type[_FakeService],
+) -> None:
     ids = _ids(6)
     registry = _Registry({i: _Client("hang") for i in ids})
-    loop = asyncio.get_running_loop()
-    start = loop.time()
-    await reconcile_once(_Session, registry, per_agent_timeout=0.05, concurrency=3)  # type: ignore[arg-type]
-    elapsed = loop.time() - start
-    assert 0.08 < elapsed < 0.5  # two batches of three, not six sequential timeouts
+    _Client.in_flight = _Client.peak = 0
+    await reconcile_once(_Session, registry, per_agent_timeout=0.02, concurrency=3)  # type: ignore[arg-type]
+    assert _Client.peak == 3  # bounded by the semaphore, but not sequential
+    assert _Client.in_flight == 0
 
 
 async def test_checker_reports_a_stalled_loop(fake_service: type[_FakeService]) -> None:
     registry = _Registry({})
-    r = Reconciler(_Session, registry, interval=0.01, per_agent_timeout=0.01)  # type: ignore[arg-type]
+    # a 1 s timeout keeps the healthy budget (3 * interval + timeout) far above
+    # any event-loop hiccup, so the passing branch cannot flake
+    r = Reconciler(_Session, registry, interval=0.01, per_agent_timeout=1.0)  # type: ignore[arg-type]
     checker = ReconcilerChecker(r)
     with pytest.raises(RuntimeError, match="not started"):
-        checker.check()
+        await checker.check()
     r.start()
     try:
         await asyncio.sleep(0.05)
-        checker.check()  # passes are completing
+        await checker.check()  # passes are completing
         assert r.last_success_at is not None
         r.last_success_at -= 10  # pretend the last pass was long ago
         r.started_at -= 10  # type: ignore[operator]
         with pytest.raises(RuntimeError, match="no completed reconcile pass"):
-            checker.check()
+            await checker.check()
+        r.last_pass_seconds = 30  # a slow pass widens the budget
+        await checker.check()
     finally:
         await r.stop()

@@ -59,14 +59,11 @@ class LogLease:
 
 class EnvironmentService:
     def __init__(
-        self,
-        session: AsyncSession,
-        registry: AgentRegistry,
-        slots: StreamSlots | None = None,
+        self, session: AsyncSession, registry: AgentRegistry, slots: StreamSlots
     ) -> None:
         self._s = session
         self._registry = registry
-        self._slots = slots if slots is not None else StreamSlots()
+        self._slots = slots
 
     async def list(self) -> builtins.list[Environment]:
         result = await self._s.execute(
@@ -213,7 +210,7 @@ class EnvironmentService:
         await self._s.commit()
         _log.info("environment removed: id=%s", env_id)
 
-    async def log_lines(self, env_id: uuid.UUID) -> LogLease:
+    async def log_lines(self, env_id: uuid.UUID, client_id: str = "") -> LogLease:
         """Resolve the row, its container, its agent and a stream slot before the SSE headers go out.
 
         BONNIE itself is not contacted until the relay pulls the first line, so a
@@ -225,7 +222,7 @@ class EnvironmentService:
             raise ApiError(409, "environment has no container")
         client = self._client_for(env)
         try:
-            release = self._slots.acquire(str(env.agent_id))
+            release = self._slots.acquire(str(env.agent_id), client_id)
         except TooManyStreams as exc:
             raise ApiError(429, f"{exc}; close another log view first") from exc
         return LogLease(client.stream_container_logs(env.container_id), release)

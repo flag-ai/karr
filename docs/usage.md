@@ -54,9 +54,9 @@ every failure is shown as a toast.
 one server-sent event per line, keepalives every 15 s, `event: end` when the
 container's stream closes, `event: error` with a message on failure. The viewer
 keeps the last 5 000 lines, reconnects with backoff after a dropped connection
-(marking the restart) and stops on end or error. At most 8 streams per agent
-are open at once (429 past that) and a stream ends after 4 hours; reopen to
-continue.
+(marking the restart) and stops on end or error. At most 8 streams per agent and 3
+per client are open at once (429 past that) and a stream ends after 4 hours;
+reopen to continue.
 
 ## 6. Reconciliation
 

@@ -31,5 +31,7 @@ def test_generated_api_docs_cover_every_route() -> None:
 
 def test_committed_api_docs_are_current() -> None:
     gen = _load()
-    committed = (SCRIPT.parents[1] / "docs" / "api.md").read_text()
-    assert committed == gen.render(gen.load_spec())  # type: ignore[attr-defined]
+    committed = (SCRIPT.parents[1] / "docs" / "api.md").read_text(encoding="utf-8")
+    assert committed == gen.render(gen.load_spec()), (  # type: ignore[attr-defined]
+        "docs/api.md is stale: run `make api-docs` and commit the result"
+    )

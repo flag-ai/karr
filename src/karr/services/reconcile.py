@@ -11,6 +11,7 @@ import uuid
 from flag_commons.bonnie import STATUS_ONLINE, AgentRegistry, BonnieError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from karr.api.sse import StreamSlots
 from karr.services.environments import EnvironmentService
 
 DEFAULT_RECONCILE_INTERVAL = 30.0
@@ -43,9 +44,8 @@ async def reconcile_once(
             return 0
         containers = await client.list_containers()
         async with sessions() as session:
-            return await EnvironmentService(session, registry).reconcile_agent(
-                uuid.UUID(agent_id), containers
-            )
+            service = EnvironmentService(session, registry, StreamSlots())
+            return await service.reconcile_agent(uuid.UUID(agent_id), containers)
 
     async def one(agent_id: str, agent_name: str) -> int:
         async with gate:
@@ -87,15 +87,17 @@ class Reconciler:
         *,
         interval: float = DEFAULT_RECONCILE_INTERVAL,
         per_agent_timeout: float = DEFAULT_PER_AGENT_TIMEOUT,
+        concurrency: int = DEFAULT_CONCURRENCY,
     ) -> None:
         self._sessions = sessions
         self._registry = registry
         self.interval = interval
         self.per_agent_timeout = per_agent_timeout
+        self.concurrency = concurrency
         self._task: asyncio.Task[None] | None = None
         self.started_at: float | None = None
         self.last_success_at: float | None = None
-        self.last_error: str = ""
+        self.last_pass_seconds: float = 0.0
 
     def start(self) -> None:
         if self._task is None:
@@ -121,18 +123,19 @@ class Reconciler:
     async def _loop(self) -> None:
         while True:
             await asyncio.sleep(self.interval)
+            started = time.monotonic()
             try:
                 await reconcile_once(
                     self._sessions,
                     self._registry,
                     per_agent_timeout=self.per_agent_timeout,
+                    concurrency=self.concurrency,
                 )
             except Exception as exc:  # noqa: BLE001 - the loop must survive
-                self.last_error = str(exc)
                 _log.error("reconcile pass failed: %s", exc, exc_info=exc)
             else:
                 self.last_success_at = time.monotonic()
-                self.last_error = ""
+                self.last_pass_seconds = self.last_success_at - started
 
 
 class ReconcilerChecker:
@@ -143,14 +146,17 @@ class ReconcilerChecker:
     def __init__(self, reconciler: Reconciler) -> None:
         self._r = reconciler
 
-    def check(self) -> None:
+    async def check(self) -> None:
         r = self._r
         if r.started_at is None:
             raise RuntimeError("reconciler not started")
         age = r.seconds_since_success()
-        limit = r.interval * MISSED_PASSES_BEFORE_UNHEALTHY + r.per_agent_timeout
+        # a pass may legitimately take longer than the interval with many
+        # slow agents, so the budget grows with the last observed pass
+        limit = r.interval * MISSED_PASSES_BEFORE_UNHEALTHY + max(
+            r.per_agent_timeout, r.last_pass_seconds
+        )
         if age is not None and age > limit:
-            detail = f": {r.last_error}" if r.last_error else ""
             raise RuntimeError(
-                f"no completed reconcile pass for {age:.0f}s (limit {limit:.0f}s){detail}"
+                f"no completed reconcile pass for {age:.0f}s (limit {limit:.0f}s)"
             )

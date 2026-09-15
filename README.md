@@ -74,10 +74,16 @@ KARR locally, with an `observability` profile that adds Prometheus and Grafana
 provisioned with `grafana/dashboards/karr-overview.json`:
 
 ```bash
-cp .env.example .env            # fill KARR_ADMIN_TOKEN, KARR_SECRET_KEY, POSTGRES_PASSWORD, GF_ADMIN_PASSWORD
+cp .env.example .env            # fill KARR_ADMIN_TOKEN, KARR_SECRET_KEY, GF_ADMIN_PASSWORD (POSTGRES_PASSWORD has a dev default)
 docker compose up -d postgres karr
 docker compose --profile observability up -d
 ```
+
+Provisioning needs `KARR_PUBLIC_URL` in `.env`; for a plain-http lab run also
+set `KARR_ALLOW_INSECURE_INSTALL=true`. Compose passes secrets as container
+environment (visible to `docker inspect`), which is acceptable for a
+development box only; production takes them from OpenBao through the stack
+`.env`.
 
 `docker-compose.dev.yml` swaps the service for `uvicorn --reload` over the
 bind-mounted `src/` (`Dockerfile.dev`); pair it with `npm run dev` in
@@ -98,7 +104,7 @@ TEST_DATABASE_URL=postgresql://karr:pw@localhost:5432/karr_test make test-all
 
 The integration suite creates and drops the `karr_*` tables in the database it
 is given; CI runs it against a PostgreSQL 17 service and enforces 85 % coverage.
-The contract suite replays 87 fixtures recorded from the Go service; every
+The contract suite replays the 88 fixtures recorded from the Go service; every
 intentional difference is annotated with its K-D id in `tests/contract/README.md`.
 
 ### Frontend
@@ -116,8 +122,10 @@ installs it; `npm run dev` starts Vite on port 5173 and proxies `/api`,
 `karr_http_request_duration_seconds` by route template, `karr_build_info`, and
 the `process_*`, `python_*` collectors. The Grafana dashboard shows request rate
 and p95 latency by route, status classes, RSS and CPU, open file descriptors
-and Python GC activity, in Catppuccin Mocha. `/ready` reports the database
-(critical), `bonnie-agents` and `reconciler` (informational).
+and Python GC activity, in Catppuccin Mocha, selected by the Prometheus `job`
+variable. `/ready` reports the database (critical), `bonnie-agents` and
+`reconciler` (informational); it runs a real database round trip per call and
+is unauthenticated, so keep it behind the platform's ingress limits.
 
 ### API docs
 

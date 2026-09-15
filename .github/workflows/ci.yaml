@@ -25,9 +25,9 @@ jobs:
       - name: Verify CLI
         run: poetry run karr version
       - name: Ruff lint
-        run: poetry run ruff check src tests
+        run: poetry run ruff check src tests scripts
       - name: Ruff format check
-        run: poetry run ruff format --check src tests
+        run: poetry run ruff format --check src tests scripts
       - name: Mypy
         run: poetry run mypy
 

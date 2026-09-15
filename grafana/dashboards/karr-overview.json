@@ -49,7 +49,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "karr_build_info",
+          "expr": "karr_build_info{job=\"$job\"}",
           "legendFormat": "{{version}}",
           "refId": "A",
           "instant": true
@@ -99,7 +99,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "python_info",
+          "expr": "python_info{job=\"$job\"}",
           "legendFormat": "{{implementation}} {{major}}.{{minor}}.{{patchlevel}}",
           "refId": "A",
           "instant": true
@@ -150,7 +150,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(rate(karr_http_requests_total[5m]))",
+          "expr": "sum(rate(karr_http_requests_total{job=\"$job\"}[5m]))",
           "legendFormat": "",
           "refId": "A",
           "instant": true
@@ -218,7 +218,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(rate(karr_http_requests_total{status=~\"5..\"}[5m]))",
+          "expr": "sum(rate(karr_http_requests_total{job=\"$job\",status=~\"5..\"}[5m]))",
           "legendFormat": "",
           "refId": "A",
           "instant": true
@@ -276,7 +276,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (route) (rate(karr_http_requests_total[5m]))",
+          "expr": "sum by (route) (rate(karr_http_requests_total{job=\"$job\"}[5m]))",
           "legendFormat": "{{route}}",
           "refId": "A"
         }
@@ -350,7 +350,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.95, sum by (le, route) (rate(karr_http_request_duration_seconds_bucket[5m])))",
+          "expr": "histogram_quantile(0.95, sum by (le, route) (rate(karr_http_request_duration_seconds_bucket{job=\"$job\"}[5m])))",
           "legendFormat": "{{route}}",
           "refId": "A"
         }
@@ -449,7 +449,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(rate(karr_http_requests_total{status=~\"2..\"}[5m]))",
+          "expr": "sum(rate(karr_http_requests_total{job=\"$job\",status=~\"2..\"}[5m]))",
           "legendFormat": "2xx",
           "refId": "A"
         },
@@ -458,7 +458,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(rate(karr_http_requests_total{status=~\"4..\"}[5m]))",
+          "expr": "sum(rate(karr_http_requests_total{job=\"$job\",status=~\"4..\"}[5m]))",
           "legendFormat": "4xx",
           "refId": "B"
         },
@@ -467,7 +467,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(rate(karr_http_requests_total{status=~\"5..\"}[5m]))",
+          "expr": "sum(rate(karr_http_requests_total{job=\"$job\",status=~\"5..\"}[5m]))",
           "legendFormat": "5xx",
           "refId": "C"
         }
@@ -522,7 +522,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "up{job=\"karr\"}",
+          "expr": "up{job=\"$job\"}",
           "legendFormat": "up",
           "refId": "A"
         }
@@ -585,6 +585,20 @@
                   "mode": "fixed",
                   "fixedColor": "#585b70"
                 }
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              },
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    10,
+                    10
+                  ]
+                }
               }
             ]
           }
@@ -607,7 +621,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "process_resident_memory_bytes{job=\"karr\"}",
+          "expr": "process_resident_memory_bytes{job=\"$job\"}",
           "legendFormat": "RSS",
           "refId": "A"
         },
@@ -616,7 +630,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "process_virtual_memory_bytes{job=\"karr\"}",
+          "expr": "process_virtual_memory_bytes{job=\"$job\"}",
           "legendFormat": "virtual",
           "refId": "B"
         }
@@ -690,7 +704,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "rate(process_cpu_seconds_total{job=\"karr\"}[5m])",
+          "expr": "rate(process_cpu_seconds_total{job=\"$job\"}[5m])",
           "legendFormat": "cores",
           "refId": "A"
         }
@@ -752,6 +766,20 @@
                   "mode": "fixed",
                   "fixedColor": "#585b70"
                 }
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              },
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    10,
+                    10
+                  ]
+                }
               }
             ]
           }
@@ -774,7 +802,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "process_open_fds{job=\"karr\"}",
+          "expr": "process_open_fds{job=\"$job\"}",
           "legendFormat": "open",
           "refId": "A"
         },
@@ -783,7 +811,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "process_max_fds{job=\"karr\"}",
+          "expr": "process_max_fds{job=\"$job\"}",
           "legendFormat": "max",
           "refId": "B"
         }
@@ -882,7 +910,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (generation) (rate(python_gc_collections_total{job=\"karr\"}[5m]))",
+          "expr": "sum by (generation) (rate(python_gc_collections_total{job=\"$job\"}[5m]))",
           "legendFormat": "gen {{generation}}",
           "refId": "A"
         }
@@ -966,7 +994,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(rate(python_gc_objects_collected_total{job=\"karr\"}[5m]))",
+          "expr": "sum(rate(python_gc_objects_collected_total{job=\"$job\"}[5m]))",
           "legendFormat": "collected",
           "refId": "A"
         },
@@ -975,7 +1003,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(rate(python_gc_objects_uncollectable_total{job=\"karr\"}[5m]))",
+          "expr": "sum(rate(python_gc_objects_uncollectable_total{job=\"$job\"}[5m]))",
           "legendFormat": "uncollectable",
           "refId": "B"
         }
@@ -989,7 +1017,32 @@
     "flag"
   ],
   "templating": {
-    "list": []
+    "list": [
+      {
+        "name": "job",
+        "label": "Prometheus job",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": {
+          "query": "label_values(karr_build_info, job)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "definition": "label_values(karr_build_info, job)",
+        "refresh": 1,
+        "sort": 1,
+        "includeAll": false,
+        "multi": false,
+        "current": {
+          "selected": false,
+          "text": "karr",
+          "value": "karr"
+        },
+        "hide": 0
+      }
+    ]
   },
   "time": {
     "from": "now-1h",
@@ -1000,5 +1053,6 @@
   "title": "KARR Overview",
   "uid": "karr-overview",
   "version": 3,
-  "description": "KARR 0.3.0 (Python): HTTP rate and latency, process and Python runtime health. Catppuccin Mocha."
+  "description": "KARR 0.3.0 (Python): HTTP rate and latency, process and Python runtime health. Catppuccin Mocha.",
+  "refresh": "30s"
 }

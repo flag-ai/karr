@@ -14,12 +14,12 @@ test-all:
 
 # Code quality
 lint:
-	poetry run ruff check src tests
-	poetry run ruff format --check src tests
+	poetry run ruff check src tests scripts
+	poetry run ruff format --check src tests scripts
 	poetry run mypy
 
 security:
-	poetry run bandit -q -r src -ll
+	poetry run bandit -q -r src scripts -ll
 	poetry run pip-audit
 
 # Frontend: build and install into the package's static dir
@@ -30,7 +30,7 @@ frontend:
 
 # Regenerate docs/api.md from the OpenAPI schema
 api-docs:
-	poetry run python scripts/gen_api_docs.py > docs/api.md
+	poetry run python scripts/gen_api_docs.py > docs/api.md.tmp && mv docs/api.md.tmp docs/api.md
 
 # Build
 build: frontend

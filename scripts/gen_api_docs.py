@@ -24,9 +24,9 @@ are open; the last two are gated by a one-time registration token instead.
 **Errors.** Every error body is `{"error": "<message>"}`: 400 for a missing or
 malformed JSON body, 422 for a body that fails validation (the message names the
 field), 401 without a valid bearer, 404 for an unknown id, 409 for a state
-conflict, 413 past the 1 MiB body limit, 429 when a rate limit trips (with
-`Retry-After`), 502 when BONNIE refuses an operation, 503 when provisioning is
-not configured.
+conflict, 413 past the 1 MiB body limit, 429 when a rate limit trips (the
+token-bucket limits add `Retry-After`) or too many log streams are open, 502
+when BONNIE refuses an operation, 503 when provisioning is not configured.
 
 **Omitted fields.** Optional response fields (`project_id`, `container_id`,
 `status_message`, `last_seen_at`, `claimed_at`, `agent_id`, empty `env`/`mounts`/
@@ -104,7 +104,7 @@ NOTES: dict[tuple[str, str], str] = {
     (
         "get",
         "/api/v1/environments/{env_id}/logs",
-    ): "`text/event-stream`. Each log line is one `data:` frame with backslash, CR and LF escaped as `\\\\`, `\\r`, `\\n`; `: keepalive` every 15 s; `event: end` when the container's stream closes (or after the 4 h stream limit), `event: error` with a message on failure. 409 when the environment has no container, 429 past 8 concurrent streams per agent.",
+    ): "`text/event-stream`. Each log line is one `data:` frame with backslash, CR and LF escaped as `\\\\`, `\\r`, `\\n`; `: keepalive` every 15 s; `event: end` when the container's stream closes (or after the 4 h stream limit), `event: error` with a message on failure. 409 when the environment has no container, 429 past 8 concurrent streams per agent or 3 per client.",
 }
 
 SECTION_ORDER = [
@@ -270,4 +270,4 @@ def load_spec() -> dict[str, Any]:
 
 
 if __name__ == "__main__":
-    sys.stdout.write(render(load_spec()))
+    sys.stdout.buffer.write(render(load_spec()).encode("utf-8"))

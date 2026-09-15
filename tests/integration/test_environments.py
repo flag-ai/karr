@@ -27,8 +27,10 @@ class _ByteStream(httpx.AsyncByteStream):
         self._chunks = chunks
         self._endless = endless
         self.closed = False
+        self.started = False
 
     async def __aiter__(self) -> AsyncIterator[bytes]:
+        self.started = True
         for chunk in self._chunks:
             yield chunk
         while self._endless:
@@ -36,6 +38,9 @@ class _ByteStream(httpx.AsyncByteStream):
             await asyncio.sleep(0.01)
 
     async def aclose(self) -> None:
+        await asyncio.sleep(
+            0
+        )  # like httpx: a checkpoint, so a cancelled await would abort it
         self.closed = True
 
 
@@ -426,28 +431,36 @@ def test_log_stream_slot_cap(api: TestClient) -> None:
         "/api/v1/environments", json={"agent_id": aid, "name": "env-1", "image": "img"}
     ).json()["id"]
     slots = api.app.state.log_slots  # type: ignore[attr-defined]
-    slots.per_key = 1
-    release = slots.acquire(aid)  # another viewer already holds the agent's only slot
+    slots.per_key, slots.per_client = 2, 1
+    release = slots.acquire(aid, "10.0.0.1")  # this client already holds a stream
     try:
         resp = api.get(f"/api/v1/environments/{eid}/logs")
         assert resp.status_code == 429
-        assert "too many open log streams" in resp.json()["error"]
+        assert "from this client" in resp.json()["error"]
+        other = slots.acquire(aid, "10.0.0.2")  # the agent cap is now reached
+        try:
+            assert api.get(f"/api/v1/environments/{eid}/logs").status_code == 429
+        finally:
+            other()
     finally:
         release()
     assert api.get(f"/api/v1/environments/{eid}/logs").status_code == 200
     assert slots.open(aid) == 0  # a finished stream gives its slot back
 
 
-@pytest.mark.parametrize("spec_version", ["2.4", "2.3"])
+@pytest.mark.parametrize("when", ["mid-stream", "before-first-frame"])
+@pytest.mark.parametrize("spec_version", ["2.3", "2.4"])
 @respx.mock
 def test_log_stream_disconnect_releases_upstream(
-    api: TestClient, spec_version: str
+    api: TestClient, spec_version: str, when: str
 ) -> None:
-    """A client that goes away mid-stream frees the upstream connection and the slot.
+    """A client that goes away frees the upstream connection and the slot.
 
     Driven at the ASGI level because the TestClient buffers streaming bodies.
-    Spec 2.4 is uvicorn: the disconnect is an OSError from ``send``; 2.3 is the
-    older shape where ``receive`` yields ``http.disconnect``.
+    Spec 2.3 is what uvicorn's HTTP protocols advertise: ``receive`` yields
+    ``http.disconnect`` and the streaming task is cancelled. 2.4 is the shape
+    where ``send`` raises an OSError. ``before-first-frame`` is the case where
+    the relay generator was never started.
     """
     _mock_bonnie()
     aid = _agent(api)
@@ -465,6 +478,8 @@ def test_log_stream_disconnect_releases_upstream(
     async def drive() -> None:
         gone = asyncio.Event()
         seen = 0
+        if when == "before-first-frame":
+            gone.set()
 
         async def receive() -> dict[str, object]:
             await gone.wait()
@@ -500,8 +515,14 @@ def test_log_stream_disconnect_releases_upstream(
         # ClientDisconnect (2.3) or the OSError itself (2.4) is the expected exit
         with contextlib.suppress(Exception):
             await api.app(scope, receive, send)  # type: ignore[arg-type]
-        assert seen >= 2
+        if when == "mid-stream":
+            assert seen >= 2
+        assert slots.open(aid) == 0  # released synchronously, generator started or not
+        for _ in range(20):  # the upstream close runs as a detached task
+            if upstream.closed or not upstream.started:
+                break
+            await asyncio.sleep(0.01)
 
     api.portal.call(drive)
-    assert upstream.closed
     assert slots.open(aid) == 0
+    assert upstream.closed or not upstream.started

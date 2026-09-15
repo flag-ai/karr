@@ -7,7 +7,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends git \
 WORKDIR /app
 COPY pyproject.toml poetry.lock README.md ./
 RUN poetry install --no-interaction --no-ansi --without dev --no-root
-ENV PYTHONUNBUFFERED=1 PYTHONPATH=/app/src LISTEN_ADDR=:8080
+RUN groupadd --gid 1000 karr && useradd --uid 1000 --gid karr --create-home karr
+ENV PYTHONUNBUFFERED=1 PYTHONPATH=/app/src
+USER karr
 EXPOSE 8080
-# Source is bind-mounted at runtime; the ASGI module reads the same env as `karr serve`.
+# Source is bind-mounted read-only at runtime; the ASGI module reads the same
+# env as `karr serve`. The package is not installed (--no-root), so the version
+# reports as "dev".
 CMD ["uvicorn", "karr.asgi:app", "--host", "0.0.0.0", "--port", "8080", "--reload", "--reload-dir", "/app/src", "--no-server-header"]
