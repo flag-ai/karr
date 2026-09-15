@@ -55,3 +55,11 @@ Python Rewrite Plan and summarised here as the service PRs land.
   reconciler runs agents 4 at a time with the database write inside the
   per-agent timeout, `KARR_RECONCILE_INTERVAL`/`KARR_RECONCILE_TIMEOUT` are
   configurable, and `/ready` carries an informational `reconciler` check.
+- K7: parity sign-off. The 87 Go fixtures replay against the Python service
+  in CI with every difference annotated by its K-D id; the replay surfaced
+  K-D25 (Go's environment list dropped `project_id`, `env`, `mounts` and
+  `command`), fixed by construction here. The end-to-end fake-BONNIE scenario
+  (provision, install script, register, first poll, environment lifecycle with
+  a streamed log, a container killed behind KARR's back, guarded agent delete)
+  runs in the integration job. The register route keeps Go's 400/422 codes
+  because BONNIE's installer consumes them; the API reference now says so.
