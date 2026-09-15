@@ -1,0 +1,18 @@
+{
+  "name": "cors_preflight",
+  "method": "OPTIONS",
+  "path": "/api/v1/agents",
+  "headers": {
+    "Access-Control-Request-Method": "POST",
+    "Origin": "https://karr.example.com"
+  },
+  "status": 204,
+  "response_headers": {
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+    "Access-Control-Allow-Origin": "https://karr.example.com",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY"
+  }
+}

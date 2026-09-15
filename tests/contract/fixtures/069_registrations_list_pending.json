@@ -1,0 +1,21 @@
+{
+  "name": "registrations_list_pending",
+  "method": "GET",
+  "path": "/api/v1/agents/registrations",
+  "status": 200,
+  "response_headers": {
+    "Content-Type": "application/json",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY"
+  },
+  "response_json": [
+    {
+      "id": "7e342867-f8f1-4f23-8cd0-933fb28a5b61",
+      "label": "gpu-03",
+      "status": "pending",
+      "created_at": "2026-09-14T13:58:25.543672-04:00",
+      "expires_at": "2026-09-14T14:58:25.543672-04:00"
+    }
+  ]
+}

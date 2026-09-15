@@ -1,0 +1,15 @@
+{
+  "name": "cors_preflight_other_origin",
+  "method": "OPTIONS",
+  "path": "/api/v1/agents",
+  "headers": {
+    "Access-Control-Request-Method": "POST",
+    "Origin": "https://evil.example"
+  },
+  "status": 204,
+  "response_headers": {
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY"
+  }
+}

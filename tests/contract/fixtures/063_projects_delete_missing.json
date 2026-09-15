@@ -1,0 +1,12 @@
+{
+  "name": "projects_delete_missing",
+  "notes": "Go: 204 (K-D5: 404)",
+  "method": "DELETE",
+  "path": "/api/v1/projects/ecaa8b3e-e847-4ba5-af5e-54065371f714",
+  "status": 204,
+  "response_headers": {
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY"
+  }
+}

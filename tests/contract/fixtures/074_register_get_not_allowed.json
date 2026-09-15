@@ -1,0 +1,15 @@
+{
+  "name": "register_get_not_allowed",
+  "method": "GET",
+  "path": "/api/v1/agents/register",
+  "status": 400,
+  "response_headers": {
+    "Content-Type": "application/json",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY"
+  },
+  "response_json": {
+    "error": "invalid agent id"
+  }
+}

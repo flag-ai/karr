@@ -1,0 +1,15 @@
+{
+  "name": "environments_get_missing",
+  "method": "GET",
+  "path": "/api/v1/environments/00000000-0000-0000-0000-000000000000",
+  "status": 404,
+  "response_headers": {
+    "Content-Type": "application/json",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY"
+  },
+  "response_json": {
+    "error": "environment not found"
+  }
+}

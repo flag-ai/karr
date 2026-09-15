@@ -1,0 +1,15 @@
+{
+  "name": "environments_start_missing",
+  "method": "POST",
+  "path": "/api/v1/environments/00000000-0000-0000-0000-000000000000/start",
+  "status": 404,
+  "response_headers": {
+    "Content-Type": "application/json",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY"
+  },
+  "response_json": {
+    "error": "environment not found"
+  }
+}

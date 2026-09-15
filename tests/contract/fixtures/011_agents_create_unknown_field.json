@@ -1,0 +1,26 @@
+{
+  "name": "agents_create_unknown_field",
+  "notes": "Go ignores unknown fields (K-D21 forbids them)",
+  "method": "POST",
+  "path": "/api/v1/agents",
+  "body": {
+    "name": "gpu-x",
+    "url": "http://127.0.0.1:34487",
+    "bogus": 1
+  },
+  "status": 201,
+  "response_headers": {
+    "Content-Type": "application/json",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY"
+  },
+  "response_json": {
+    "id": "953acc2b-8836-413f-9b65-27a0e1c0424a",
+    "name": "gpu-x",
+    "url": "http://127.0.0.1:34487",
+    "status": "offline",
+    "created_at": "2026-09-14T13:58:24.825868-04:00",
+    "updated_at": "2026-09-14T13:58:24.825868-04:00"
+  }
+}

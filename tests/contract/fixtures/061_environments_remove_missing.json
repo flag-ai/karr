@@ -1,0 +1,16 @@
+{
+  "name": "environments_remove_missing",
+  "notes": "Go: 204 for a missing row (K-D5: 404)",
+  "method": "DELETE",
+  "path": "/api/v1/environments/186d9496-040f-422d-bdce-5e4a8dd638d4",
+  "status": 404,
+  "response_headers": {
+    "Content-Type": "application/json",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY"
+  },
+  "response_json": {
+    "error": "environment not found"
+  }
+}

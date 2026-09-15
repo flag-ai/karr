@@ -1,0 +1,13 @@
+{
+  "name": "environments_logs_missing",
+  "method": "GET",
+  "path": "/api/v1/environments/00000000-0000-0000-0000-000000000000/logs",
+  "status": 200,
+  "response_headers": {
+    "Cache-Control": "no-cache",
+    "Content-Type": "text/event-stream",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY"
+  }
+}

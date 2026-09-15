@@ -1,0 +1,21 @@
+{
+  "name": "environments_create_unknown_agent",
+  "notes": "Go: FK violation 500 (K-D5: 400)",
+  "method": "POST",
+  "path": "/api/v1/environments",
+  "body": {
+    "agent_id": "00000000-0000-0000-0000-000000000000",
+    "name": "env-x",
+    "image": "img"
+  },
+  "status": 500,
+  "response_headers": {
+    "Content-Type": "application/json",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY"
+  },
+  "response_json": {
+    "error": "failed to create environment"
+  }
+}

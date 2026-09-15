@@ -1,0 +1,11 @@
+{
+  "name": "registrations_delete",
+  "method": "DELETE",
+  "path": "/api/v1/agents/registrations/7e342867-f8f1-4f23-8cd0-933fb28a5b61",
+  "status": 204,
+  "response_headers": {
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY"
+  }
+}
