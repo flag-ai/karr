@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -28,6 +29,10 @@ def test_metrics(client: TestClient, auth: dict[str, str]) -> None:
     resp = client.get("/metrics")
     assert resp.status_code == 200
     assert resp.headers["content-type"].startswith("text/plain")
+    assert f'version="{__version__}"' in resp.text  # karr_build_info for the dashboard
+    assert "karr_build_info{" in resp.text and "python_info{" in resp.text
+    if sys.platform == "linux":  # the process collector reads /proc
+        assert "process_open_fds" in resp.text
     assert "karr_http_requests_total" in resp.text
     assert 'route="/api/v1/auth/check"' in resp.text
     assert "process_" in resp.text or "python_info" in resp.text

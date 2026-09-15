@@ -72,6 +72,9 @@ def test_load_custom(env: pytest.MonkeyPatch) -> None:
         ("KARR_REGISTRATION_TTL", "99999999", "between"),
         ("KARR_TRUSTED_PROXIES", "10.0.0/8", "TRUSTED_PROXIES"),
         ("DATABASE_URL", "mysql://x", "invalid connection string"),
+        ("KARR_RECONCILE_INTERVAL", "soon", "number of seconds"),
+        ("KARR_RECONCILE_INTERVAL", "0", "RECONCILE_INTERVAL"),
+        ("KARR_RECONCILE_TIMEOUT", "9999", "RECONCILE_TIMEOUT"),
     ],
 )
 def test_load_rejects(

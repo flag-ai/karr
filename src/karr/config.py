@@ -19,6 +19,10 @@ COMPONENT = "karr"
 DEFAULT_REGISTRATION_TTL = 3600
 MAX_REGISTRATION_TTL = 7 * 24 * 3600
 MIN_ADMIN_TOKEN_LENGTH = 16
+DEFAULT_RECONCILE_INTERVAL = 30.0
+DEFAULT_RECONCILE_TIMEOUT = 20.0
+MAX_RECONCILE_INTERVAL = 3600.0
+MAX_RECONCILE_TIMEOUT = 300.0
 
 
 class KarrConfig(BaseConfig):
@@ -34,6 +38,26 @@ class KarrConfig(BaseConfig):
     public_url: str = ""
     enable_hsts: bool = False
     allow_insecure_install: bool = False
+    reconcile_interval: float = DEFAULT_RECONCILE_INTERVAL
+    reconcile_timeout: float = DEFAULT_RECONCILE_TIMEOUT
+
+    @field_validator("reconcile_interval")
+    @classmethod
+    def _sane_interval(cls, value: float) -> float:
+        if not 1 <= value <= MAX_RECONCILE_INTERVAL:
+            raise ValueError(
+                f"KARR_RECONCILE_INTERVAL must be between 1 and {MAX_RECONCILE_INTERVAL:.0f} seconds"
+            )
+        return value
+
+    @field_validator("reconcile_timeout")
+    @classmethod
+    def _sane_timeout(cls, value: float) -> float:
+        if not 1 <= value <= MAX_RECONCILE_TIMEOUT:
+            raise ValueError(
+                f"KARR_RECONCILE_TIMEOUT must be between 1 and {MAX_RECONCILE_TIMEOUT:.0f} seconds"
+            )
+        return value
 
     @field_validator("registration_ttl")
     @classmethod
@@ -115,6 +139,12 @@ class KarrConfig(BaseConfig):
             )
         except ValueError as exc:
             raise ConfigError(f"config: KARR_TRUSTED_PROXIES: {exc}") from exc
+        reconcile_interval = _seconds(
+            provider, "KARR_RECONCILE_INTERVAL", DEFAULT_RECONCILE_INTERVAL
+        )
+        reconcile_timeout = _seconds(
+            provider, "KARR_RECONCILE_TIMEOUT", DEFAULT_RECONCILE_TIMEOUT
+        )
         origins = _split(provider.get_or_default("KARR_CORS_ORIGINS", ""))
         if "*" in origins:
             raise ConfigError(
@@ -138,8 +168,17 @@ class KarrConfig(BaseConfig):
             "allow_insecure_install": _truthy(
                 provider.get_or_default("KARR_ALLOW_INSECURE_INSTALL", "")
             ),
+            "reconcile_interval": reconcile_interval,
+            "reconcile_timeout": reconcile_timeout,
         }
         return cls(**fields)
+
+
+def _seconds(provider: SecretsProvider, key: str, default: float) -> float:
+    try:
+        return float(provider.get_or_default(key, str(default)))
+    except ValueError as exc:
+        raise ConfigError(f"config: {key} must be a number of seconds") from exc
 
 
 def _truthy(value: str) -> bool:

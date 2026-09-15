@@ -1,0 +1,13 @@
+# Development overrides: uvicorn --reload over a bind-mounted source tree.
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up karr
+# The SPA is served by Vite in that mode: `cd frontend && npm run dev`.
+services:
+  karr:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./src:/app/src:ro
+    environment:
+      KARR_CORS_ORIGINS: ${KARR_CORS_ORIGINS:-http://localhost:5173}
+      LOG_LEVEL: ${LOG_LEVEL:-debug}

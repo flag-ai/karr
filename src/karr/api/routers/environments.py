@@ -7,6 +7,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from karr.api.ratelimit import client_key
 from karr.api.schemas import EnvironmentCreate, EnvironmentOut
 from karr.api.sse import relay, sse_response
 from karr.db.session import get_session
@@ -23,7 +24,9 @@ Session = Annotated[AsyncSession, Depends(get_session)]
 
 
 def _service(request: Request, session: AsyncSession) -> EnvironmentService:
-    return EnvironmentService(session, registry_of(request))
+    return EnvironmentService(
+        session, registry_of(request), slots=request.app.state.log_slots
+    )
 
 
 @router.get("", response_model=list[EnvironmentOut])
@@ -80,7 +83,11 @@ async def remove_environment(
 )
 async def environment_logs(env_id: str, request: Request, session: Session) -> Response:
     """SSE relay of the container logs (K-D2): keepalives, `event: end`, `event: error`."""
-    lines = await _service(request, session).log_lines(
-        parse_uuid(env_id, "environment")
+    lease = await _service(request, session).log_lines(
+        parse_uuid(env_id, "environment"), client_key(request)
     )
-    return sse_response(relay(lines))
+    # the release is idempotent: the relay calls it when it finishes and the
+    # response calls it when the client left before the relay ever started
+    return sse_response(
+        relay(lease.lines, on_close=lease.release), on_close=lease.release
+    )

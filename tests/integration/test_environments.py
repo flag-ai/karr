@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import functools
 from collections.abc import AsyncIterator
 
@@ -22,12 +23,25 @@ BONNIE2 = "http://gpu-02.test:7777"
 
 
 class _ByteStream(httpx.AsyncByteStream):
-    def __init__(self, chunks: list[bytes]) -> None:
+    def __init__(self, chunks: list[bytes], *, endless: bool = False) -> None:
         self._chunks = chunks
+        self._endless = endless
+        self.closed = False
+        self.started = False
 
     async def __aiter__(self) -> AsyncIterator[bytes]:
+        self.started = True
         for chunk in self._chunks:
             yield chunk
+        while self._endless:
+            yield b"data: tick\n\n"
+            await asyncio.sleep(0.01)
+
+    async def aclose(self) -> None:
+        await asyncio.sleep(
+            0
+        )  # like httpx: a checkpoint, so a cancelled await would abort it
+        self.closed = True
 
 
 def _mock_bonnie(container_state: str = "running") -> None:
@@ -407,3 +421,108 @@ def test_environment_routes_require_admin(api: TestClient) -> None:
             == 401
         )
     assert api.delete(f"/api/v1/environments/{ZERO}").status_code == 401
+
+
+@respx.mock
+def test_log_stream_slot_cap(api: TestClient) -> None:
+    _mock_bonnie()
+    aid = _agent(api)
+    eid = api.post(
+        "/api/v1/environments", json={"agent_id": aid, "name": "env-1", "image": "img"}
+    ).json()["id"]
+    slots = api.app.state.log_slots  # type: ignore[attr-defined]
+    slots.per_key, slots.per_client = 2, 1
+    release = slots.acquire(aid, "10.0.0.1")  # this client already holds a stream
+    try:
+        resp = api.get(f"/api/v1/environments/{eid}/logs")
+        assert resp.status_code == 429
+        assert "from this client" in resp.json()["error"]
+        other = slots.acquire(aid, "10.0.0.2")  # the agent cap is now reached
+        try:
+            assert api.get(f"/api/v1/environments/{eid}/logs").status_code == 429
+        finally:
+            other()
+    finally:
+        release()
+    assert api.get(f"/api/v1/environments/{eid}/logs").status_code == 200
+    assert slots.open(aid) == 0  # a finished stream gives its slot back
+
+
+@pytest.mark.parametrize("when", ["mid-stream", "before-first-frame"])
+@pytest.mark.parametrize("spec_version", ["2.3", "2.4"])
+@respx.mock
+def test_log_stream_disconnect_releases_upstream(
+    api: TestClient, spec_version: str, when: str
+) -> None:
+    """A client that goes away frees the upstream connection and the slot.
+
+    Driven at the ASGI level because the TestClient buffers streaming bodies.
+    Spec 2.3 is what uvicorn's HTTP protocols advertise: ``receive`` yields
+    ``http.disconnect`` and the streaming task is cancelled. 2.4 is the shape
+    where ``send`` raises an OSError. ``before-first-frame`` is the case where
+    the relay generator was never started.
+    """
+    _mock_bonnie()
+    aid = _agent(api)
+    eid = api.post(
+        "/api/v1/environments", json={"agent_id": aid, "name": "env-1", "image": "img"}
+    ).json()["id"]
+    upstream = _ByteStream([b"data: hello\n\n"], endless=True)
+    respx.get(f"{BONNIE}/api/v1/containers/ctr-1/logs").mock(
+        return_value=httpx.Response(
+            200, stream=upstream, headers={"Content-Type": "text/event-stream"}
+        )
+    )
+    slots = api.app.state.log_slots  # type: ignore[attr-defined]
+
+    async def drive() -> None:
+        gone = asyncio.Event()
+        seen = 0
+        if when == "before-first-frame":
+            gone.set()
+
+        async def receive() -> dict[str, object]:
+            await gone.wait()
+            return {"type": "http.disconnect"}
+
+        async def send(message: dict[str, object]) -> None:
+            nonlocal seen
+            if message["type"] == "http.response.body":
+                seen += 1
+                if seen > 1:  # the first chunk was delivered; now the client is gone
+                    gone.set()
+                    if spec_version == "2.4":
+                        raise OSError("connection reset")
+                    await asyncio.sleep(0)  # let the disconnect listener cancel us
+
+        scope = {
+            "type": "http",
+            "asgi": {"version": "3.0", "spec_version": spec_version},
+            "http_version": "1.1",
+            "method": "GET",
+            "scheme": "http",
+            "path": f"/api/v1/environments/{eid}/logs",
+            "raw_path": f"/api/v1/environments/{eid}/logs".encode(),
+            "query_string": b"",
+            "root_path": "",
+            "headers": [
+                (b"host", b"karr.test"),
+                (b"authorization", api.headers["Authorization"].encode()),
+            ],
+            "client": ("10.0.0.1", 50001),
+            "server": ("karr.test", 80),
+        }
+        # ClientDisconnect (2.3) or the OSError itself (2.4) is the expected exit
+        with contextlib.suppress(Exception):
+            await api.app(scope, receive, send)  # type: ignore[arg-type]
+        if when == "mid-stream":
+            assert seen >= 2
+        assert slots.open(aid) == 0  # released synchronously, generator started or not
+        for _ in range(20):  # the upstream close runs as a detached task
+            if upstream.closed or not upstream.started:
+                break
+            await asyncio.sleep(0.01)
+
+    api.portal.call(drive)
+    assert slots.open(aid) == 0
+    assert upstream.closed or not upstream.started
