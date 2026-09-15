@@ -16,9 +16,11 @@ plan; a difference without a K-D id is a porting bug.
 against the Python app with the Go mock BONNIE reproduced in respx, substitutes
 the identifiers created along the way, and compares the status and the body
 shape (keys and value types). `DEVIATIONS` in that file lists every fixture
-allowed to differ with its K-D id; the plan's §6 table explains each id. The
-replay found one Go defect the inventory had missed: the environment list
-dropped `project_id`, `env`, `mounts` and `command` (K-D25).
+allowed to differ with its K-D id (`framework` and `volatile` mark the two
+non-defect cases: Starlette's preflight replies and the Prometheus text). The
+plan's §6 table explains each id; K-D25 (Go's environment list dropped
+`project_id`, `env`, `mounts` and `command`) and K-D26 (the install command
+lacked `bash -s --`) were found by the replay and added to that table in K7.
 
 `tests/integration/test_e2e_fake_bonnie.py` is the §10.3 scenario: provision,
 install script, register, first poll, environment lifecycle with a streamed

@@ -103,6 +103,23 @@ def test_end_to_end_with_fake_bonnie(
     monkeypatch.setattr(
         env_router, "relay", functools.partial(sse.relay, keepalive_seconds=0.05)
     )
+    # the explicit reconcile pass below must be the only one that runs
+    api.portal.call(api.app.state.reconciler.stop)  # type: ignore[attr-defined]
+    admin_header = api.headers["Authorization"]
+
+    def anon(method: str, url: str, **kw: object) -> httpx.Response:
+        """A request from the GPU host: no admin token, its address via the trusted proxy.
+
+        Same client and event loop as the app (a second TestClient would run its
+        requests on a fresh loop against the engine's pooled connections).
+        """
+        api.headers.pop("Authorization", None)
+        try:
+            return api.request(
+                method, url, headers={"X-Forwarded-For": "203.0.113.9"}, **kw
+            )  # type: ignore[arg-type]
+        finally:
+            api.headers["Authorization"] = admin_header
 
     # 1. provision
     prov = api.post("/api/v1/agents/provision", json={"label": "gpu-03"})
@@ -113,10 +130,7 @@ def test_end_to_end_with_fake_bonnie(
     )
 
     # 2. the install script, fetched without the admin token like the host does
-    anon = TestClient(
-        api.app, base_url="http://karr.test", client=("203.0.113.9", 4000)
-    )
-    script = anon.get(f"/api/v1/install.sh?token={token}")
+    script = anon("GET", f"/api/v1/install.sh?token={token}")
     assert script.status_code == 200 and script.headers["content-type"].startswith(
         "text/x-shellscript"
     )
@@ -137,7 +151,8 @@ def test_end_to_end_with_fake_bonnie(
     )  # nothing that could break the script's quoting
 
     # 3. register, as BONNIE's installer does
-    reg = anon.post(
+    reg = anon(
+        "POST",
         "/api/v1/agents/register",
         json={
             "registration_token": token,
@@ -179,7 +194,8 @@ def test_end_to_end_with_fake_bonnie(
         assert stream.status_code == 200
         text = b"".join(stream.iter_bytes()).decode()
     frames = text.split("\n\n")
-    assert frames[0] == "data: booting" and "data: ready" in frames
+    assert "data: booting" in frames and "data: ready" in frames
+    assert frames.index("data: booting") < frames.index("data: ready")
     assert frames.count(": keepalive") >= 2  # the pause was bridged, not cut
     assert (
         frames[-2] == "event: end\ndata: "

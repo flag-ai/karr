@@ -63,7 +63,7 @@ NOTES: dict[tuple[str, str], str] = {
     (
         "post",
         "/api/v1/agents/register",
-    ): "Called by the installer with the registration token; claims it and creates the agent in one transaction. 400 for a malformed body, 422 for an unknown, expired or already claimed token (the same codes as the Go service, since BONNIE's installer consumes them), 409 for a name clash. Rate limited per client; `X-Forwarded-For` is honoured only from `KARR_TRUSTED_PROXIES`.",
+    ): "Called by the installer with the registration token; claims it and creates the agent in one transaction. 400 for a malformed body, 422 with a generic `registration failed` for an unknown, expired or already claimed token and for a label that clashes with an existing agent name (the same codes as the Go service, since BONNIE's installer consumes them). Rate limited per client; `X-Forwarded-For` is honoured only from `KARR_TRUSTED_PROXIES`.",
     (
         "post",
         "/api/v1/agents",
