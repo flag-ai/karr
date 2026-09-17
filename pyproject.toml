@@ -16,7 +16,7 @@ karr = "karr.cli:cli"
 
 [tool.poetry.dependencies]
 python = "^3.10"
-flag-commons = {git = "https://github.com/flag-ai/commons", rev = "4eb9173", extras = ["postgres", "fastapi"]}  # main @ 0.3.0; switch to tag = "v0.3.0" once tagged
+flag-commons = {git = "https://github.com/flag-ai/commons", tag = "v0.3.0", extras = ["postgres", "fastapi"]}
 fastapi = ">=0.115"
 uvicorn = {version = ">=0.34", extras = ["standard"]}
 click = "^8.1"
