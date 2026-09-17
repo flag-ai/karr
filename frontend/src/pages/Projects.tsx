@@ -57,7 +57,7 @@ export default function Projects() {
   const startEditing = (project: Project) => {
     setEditingId(project.id)
     setEditName(project.name)
-    setEditDescription(project.description)
+    setEditDescription(project.description ?? '')
   }
 
   const saveEdit = (id: string) => {
@@ -113,7 +113,7 @@ export default function Projects() {
               <>
                 <div>
                   <div style={{ fontWeight: 600, marginBottom: 4 }}>{project.name}</div>
-                  <div style={{ fontSize: 12, color: 'var(--subtext0)' }}>{project.description}</div>
+                  <div style={{ fontSize: 12, color: 'var(--subtext0)' }}>{project.description ?? ''}</div>
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button type="button" className="secondary" onClick={() => startEditing(project)} style={{ fontSize: 12, padding: '4px 12px' }}>

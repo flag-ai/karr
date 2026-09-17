@@ -59,7 +59,7 @@ NOTES: dict[tuple[str, str], str] = {
     (
         "get",
         "/api/v1/install.sh",
-    ): "Query `token=<registration token>`. Serves the BONNIE installer only for a pending, unexpired registration (404 otherwise). Plain-http server URLs need `KARR_ALLOW_INSECURE_INSTALL`.",
+    ): "Query `token=<registration token>`. Serves the BONNIE installer only for a pending, unexpired registration: 400 for a missing or malformed token, 404 for an unknown one, 410 once it is claimed or expired. Plain-http server URLs need `KARR_ALLOW_INSECURE_INSTALL`.",
     (
         "post",
         "/api/v1/agents/register",
@@ -71,7 +71,7 @@ NOTES: dict[tuple[str, str], str] = {
     (
         "delete",
         "/api/v1/agents/{agent_id}",
-    ): "409 while environments reference the agent unless `force=true`, which deletes them from KARR (their containers are left on the host).",
+    ): "409 while environments reference the agent unless `force=true`, which removes their containers on BONNIE first and then the rows; if a container cannot be removed the rows are kept and the call answers 409 naming the environments.",
     (
         "get",
         "/api/v1/agents/{agent_id}/status",

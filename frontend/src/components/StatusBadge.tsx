@@ -8,6 +8,7 @@ const statusColors: Record<string, string> = {
   creating: 'var(--yellow)',
   pending: 'var(--yellow)',
   error: 'var(--red)',
+  unauthorized: 'var(--red)',
 }
 
 export default function StatusBadge({ status, title }: { status: string; title?: string }) {

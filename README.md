@@ -104,7 +104,7 @@ TEST_DATABASE_URL=postgresql://karr:pw@localhost:5432/karr_test make test-all
 
 The integration suite creates and drops the `karr_*` tables in the database it
 is given; CI runs it against a PostgreSQL 17 service and enforces 85 % coverage.
-The contract suite replays the 88 fixtures recorded from the Go service; every
+The contract suite replays the 87 fixtures recorded from the Go service; every
 intentional difference is annotated with its K-D id in `tests/contract/README.md`.
 
 ### Frontend

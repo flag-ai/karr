@@ -44,4 +44,24 @@ describe('Projects', () => {
     await user.click(within(screen.getByRole('dialog', { name: 'Delete project' })).getByRole('button', { name: 'Delete' }))
     await vi.waitFor(() => expect(bodies.some(b => b.method === 'DELETE' && b.url === '/api/v1/projects/p1')).toBe(true))
   })
+
+  it('edits a project whose description the API omitted', async () => {
+    const bare: Project = { id: 'p3', name: 'bare', created_at: project.created_at, updated_at: project.updated_at }
+    const puts: unknown[] = []
+    vi.stubGlobal('fetch', vi.fn((_url: string, init?: RequestInit) => {
+      if (init?.method === 'PUT') {
+        puts.push(JSON.parse(init.body as string))
+        return Promise.resolve(jsonResponse({ ...bare, name: 'bare-2' }))
+      }
+      return Promise.resolve(jsonResponse([bare]))
+    }))
+    renderApp(<Projects />)
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('button', { name: 'Edit' }))
+    const form = screen.getByRole('form', { name: 'Edit bare' })
+    await user.clear(within(form).getByLabelText('Name'))
+    await user.type(within(form).getByLabelText('Name'), 'bare-2')
+    await user.click(within(form).getByRole('button', { name: 'Save' }))
+    await vi.waitFor(() => expect(puts).toEqual([{ name: 'bare-2', description: '' }]))
+  })
 })

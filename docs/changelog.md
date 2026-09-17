@@ -7,13 +7,18 @@ routes, schema and SPA; the defects fixed are listed by K-D id in the FLAG
 Python Rewrite Plan and summarised here as the service PRs land.
 
 - K1: scaffold, admin bearer auth (K-D1), error envelope with 413/422 (K-D5,
-  K-D19), CSP/HSTS headers (K-D15), CORS `max_age` (K-D14), non-root image with
-  `HEALTHCHECK` (K-D16), Fernet token cipher (K-D12).
+  K-D19), unknown request fields rejected (K-D21), CSP/HSTS headers (K-D15),
+  CORS `max_age` (K-D14), non-root image with `HEALTHCHECK` (K-D16), Fernet
+  token cipher (K-D12), every setting read through the commons `ChainProvider`
+  so OpenBao mode falls back per key (K-D20).
 - K2: Alembic baseline with `token_encrypted` (K-D12), `last_checked_at`
   (K-D10), `ON DELETE RESTRICT` plus `?force=true` on agent delete (K-D4),
   `UNIQUE (agent_id, name)` (K-D22), CHECK constraints; 409/422/404 instead of
   500/204 (K-D5); agent URL scheme validation (K-D13); registry polls at start
-  and reloads periodically, `bonnie-agents` is non-critical (K-D9).
+  and reloads periodically, `bonnie-agents` is non-critical (K-D9); agent
+  status is `online`/`offline`/`unauthorized` and the `removed` environment
+  state is gone (K-D11); `sslmode` stays configurable and the docs say to use
+  `require` off-host (K-D24, documented rather than fixed).
 - K3: provisioning with the TTL from `KARR_REGISTRATION_TTL` and `expired`
   computed on read (K-D8); `install.sh` served only for a pending, unexpired
   token (K-D7); registration claim and agent insert in one transaction with

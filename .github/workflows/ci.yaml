@@ -100,7 +100,7 @@ jobs:
       - name: Install dependencies
         run: poetry install --with dev
       - name: Bandit
-        run: poetry run bandit -c pyproject.toml -r src
+        run: poetry run bandit -c pyproject.toml -r src scripts
       - name: pip-audit
         run: poetry run pip-audit --skip-editable
 
