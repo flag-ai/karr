@@ -6,7 +6,7 @@ dev:
 	@echo "Postgres started. Run 'poetry run karr migrate up && poetry run karr serve' and 'cd frontend && npm run dev'"
 
 # Tests: unit + contract (no database), and the whole suite against TEST_DATABASE_URL
-test:
+test:  # what CI's `test` matrix runs, plus the contract fixture checks
 	poetry run pytest tests/unit tests/contract
 
 test-all:
@@ -18,8 +18,8 @@ lint:
 	poetry run ruff format --check src tests scripts
 	poetry run mypy
 
-security:
-	poetry run bandit -q -r src scripts -ll
+security:  # the same invocations as CI's `security` job
+	poetry run bandit -c pyproject.toml -r src scripts
 	poetry run pip-audit
 
 # Frontend: build and install into the package's static dir

@@ -72,6 +72,7 @@ missed passes.
 - **Environment**: removes the container, then the row. A container BONNIE no
   longer knows about can be removed once the reconciler marked it missing.
 - **Agent**: refused (409) while environments reference it; `?force=true`
-  deletes them from KARR but leaves the containers on the host.
+  removes their containers on BONNIE first, then the rows. If a container
+  cannot be removed the rows stay and the call answers 409 naming them.
 - **Registration**: cancelling a pending registration invalidates its install
   command.

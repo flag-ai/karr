@@ -21,7 +21,7 @@ RUN poetry install --no-interaction --no-ansi --without dev
 
 # ---- Runtime ----
 FROM python:3.12-slim
-ARG VERSION=dev
+ARG VERSION=dev  # informational: the package version comes from pyproject; kept for image labels
 ARG COMMIT=unknown
 ARG BUILD_DATE=unknown
 RUN groupadd --gid 1000 karr && useradd --uid 1000 --gid karr --create-home karr
@@ -34,6 +34,7 @@ ENV PATH="/app/.venv/bin:$PATH" \
     FLAG_BUILD_COMMIT=$COMMIT \
     FLAG_BUILD_DATE=$BUILD_DATE \
     LISTEN_ADDR=:8080
+LABEL org.opencontainers.image.version=$VERSION org.opencontainers.image.revision=$COMMIT org.opencontainers.image.created=$BUILD_DATE
 USER karr
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \

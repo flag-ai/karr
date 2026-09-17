@@ -1,4 +1,4 @@
-export type AgentState = 'online' | 'offline' | 'error'
+export type AgentState = 'online' | 'offline' | 'unauthorized'
 
 export interface Agent {
   id: string
@@ -85,7 +85,8 @@ export interface AgentStatus {
 export interface Project {
   id: string
   name: string
-  description: string
+  /** Omitted by the API when empty (Go omitempty). */
+  description?: string
   created_at: string
   updated_at: string
 }
