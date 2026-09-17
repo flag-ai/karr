@@ -1,0 +1,16 @@
+{
+  "name": "register_bad_json",
+  "method": "POST",
+  "path": "/api/v1/agents/register",
+  "raw_body": "{",
+  "status": 400,
+  "response_headers": {
+    "Content-Type": "application/json",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY"
+  },
+  "response_json": {
+    "error": "invalid JSON body"
+  }
+}

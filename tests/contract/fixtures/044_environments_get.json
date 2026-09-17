@@ -1,0 +1,35 @@
+{
+  "name": "environments_get",
+  "method": "GET",
+  "path": "/api/v1/environments/e86e76c7-87b4-4c22-ad2b-c5fb51418c16",
+  "status": 200,
+  "response_headers": {
+    "Content-Type": "application/json",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY"
+  },
+  "response_json": {
+    "id": "e86e76c7-87b4-4c22-ad2b-c5fb51418c16",
+    "project_id": "ecaa8b3e-e847-4ba5-af5e-54065371f714",
+    "agent_id": "773947ea-1c76-4cfc-b881-a99dac638fb9",
+    "name": "env-1",
+    "image": "vllm/vllm-openai:latest",
+    "container_id": "test-container-123",
+    "status": "stopped",
+    "gpu": true,
+    "env": [
+      "A=1"
+    ],
+    "mounts": [
+      "/models:/models"
+    ],
+    "command": [
+      "python",
+      "-m",
+      "vllm"
+    ],
+    "created_at": "2026-09-14T13:58:25.539871-04:00",
+    "updated_at": "2026-09-14T13:58:25.540052-04:00"
+  }
+}

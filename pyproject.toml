@@ -1,0 +1,82 @@
+[tool.poetry]
+name = "karr"
+version = "0.3.0"
+description = "KARR (Kirizan's AI Refinement Runtime) - control plane that provisions AI dev environments on BONNIE GPU hosts"
+authors = ["Kirizan"]
+license = "Apache-2.0"
+readme = "README.md"
+packages = [{include = "karr", from = "src"}]
+include = [
+    {path = "src/karr/web/static/**/*", format = ["sdist", "wheel"]},
+    {path = "src/karr/db/migrations/**/*", format = ["sdist", "wheel"]},
+]
+
+[tool.poetry.scripts]
+karr = "karr.cli:cli"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+flag-commons = {git = "https://github.com/flag-ai/commons", tag = "v0.3.0", extras = ["postgres", "fastapi"]}
+fastapi = ">=0.115"
+uvicorn = {version = ">=0.34", extras = ["standard"]}
+click = "^8.1"
+cryptography = ">=43.0"
+prometheus-client = ">=0.21"
+pydantic = "^2.0"
+anyio = ">=4.0"
+greenlet = ">=3.0"  # async SQLAlchemy needs it; the asyncio extra skips it on some platforms
+
+[tool.poetry.group.dev.dependencies]
+pytest = ">=9.0.3"
+pytest-cov = "^6.0"
+pytest-mock = "^3.12"
+pytest-timeout = "^2.4.0"
+respx = ">=0.21"
+httpx = ">=0.27"
+ruff = ">=0.8"
+mypy = "^1.10"
+bandit = ">=1.7"
+pip-audit = ">=2.7"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+timeout = 60
+markers = [
+    "integration: needs a live PostgreSQL (TEST_DATABASE_URL)",
+    "contract: replays the Go parity fixtures",
+]
+
+[tool.coverage.run]
+source = ["karr"]
+concurrency = ["thread", "greenlet"]  # async SQLAlchemy runs DB code under greenlets
+
+[tool.coverage.report]
+show_missing = true
+fail_under = 85  # enforced by the CI integration job over the whole suite
+
+[tool.ruff]
+target-version = "py310"
+src = ["src", "tests", "scripts"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["E501"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.mypy]
+python_version = "3.10"
+warn_unused_configs = true
+ignore_missing_imports = true
+check_untyped_defs = true
+no_implicit_optional = true
+files = ["src/karr", "scripts"]
+
+[tool.bandit]
+exclude_dirs = ["tests"]
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

@@ -1,0 +1,19 @@
+{
+  "name": "projects_update_empty_name",
+  "notes": "Go: 500? (K-D5: 422)",
+  "method": "PUT",
+  "path": "/api/v1/projects/ecaa8b3e-e847-4ba5-af5e-54065371f714",
+  "body": {
+    "name": ""
+  },
+  "status": 500,
+  "response_headers": {
+    "Content-Type": "application/json",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY"
+  },
+  "response_json": {
+    "error": "failed to update project"
+  }
+}

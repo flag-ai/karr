@@ -1,0 +1,140 @@
+name: CI
+
+on:
+  push:
+    branches: [main, rewrite/python]
+  pull_request:
+    branches: [main, rewrite/python]
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: snok/install-poetry@a783c322200f0519c7926aa6faa857c4e23e9263 # v1.4.2
+      - name: Install dependencies
+        run: poetry install --with dev
+      - name: Check import
+        run: poetry run python -c "import karr; print(f'KARR {karr.__version__}')"
+      - name: Verify CLI
+        run: poetry run karr version
+      - name: Ruff lint
+        run: poetry run ruff check src tests scripts
+      - name: Ruff format check
+        run: poetry run ruff format --check src tests scripts
+      - name: Mypy
+        run: poetry run mypy
+
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+        include:
+          - os: macos-latest
+            python-version: "3.12"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - uses: snok/install-poetry@a783c322200f0519c7926aa6faa857c4e23e9263 # v1.4.2
+        with:
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+      - uses: actions/cache@v4
+        with:
+          path: .venv
+          key: ${{ runner.os }}-py${{ matrix.python-version }}-poetry-${{ hashFiles('poetry.lock') }}
+      - name: Install dependencies
+        run: poetry install --with dev
+      - name: Run unit tests
+        # The coverage floor is enforced in the integration job, where the
+        # whole suite runs; here the report is informational.
+        run: poetry run pytest tests/unit -v --cov=karr --cov-report=term --cov-fail-under=0
+
+  integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: karr
+          POSTGRES_PASSWORD: karr-ci  # job-local throwaway service container
+          POSTGRES_DB: karr_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U karr -d karr_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: snok/install-poetry@a783c322200f0519c7926aa6faa857c4e23e9263 # v1.4.2
+      - name: Install dependencies
+        run: poetry install --with dev
+      - name: Run the whole suite with the coverage floor
+        env:
+          TEST_DATABASE_URL: postgresql://karr:karr-ci@localhost:5432/karr_test
+        run: poetry run pytest tests -v --cov=karr --cov-report=term
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: snok/install-poetry@a783c322200f0519c7926aa6faa857c4e23e9263 # v1.4.2
+      - name: Install dependencies
+        run: poetry install --with dev
+      - name: Bandit
+        run: poetry run bandit -c pyproject.toml -r src scripts
+      - name: pip-audit
+        run: poetry run pip-audit --skip-editable
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Detect frontend
+        id: fe
+        run: |
+          if [ -f frontend/package.json ]; then echo "present=true" >> "$GITHUB_OUTPUT"; else echo "present=false" >> "$GITHUB_OUTPUT"; fi
+      - uses: actions/setup-node@v4
+        if: steps.fe.outputs.present == 'true'
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install
+        if: steps.fe.outputs.present == 'true'
+        working-directory: frontend
+        run: npm ci
+      - name: Lint
+        if: steps.fe.outputs.present == 'true'
+        working-directory: frontend
+        run: npm run lint
+      - name: Typecheck
+        if: steps.fe.outputs.present == 'true'
+        working-directory: frontend
+        run: npm run typecheck
+      - name: Test
+        if: steps.fe.outputs.present == 'true'
+        working-directory: frontend
+        run: npm test -- --run
+      - name: Build
+        if: steps.fe.outputs.present == 'true'
+        working-directory: frontend
+        run: npm run build

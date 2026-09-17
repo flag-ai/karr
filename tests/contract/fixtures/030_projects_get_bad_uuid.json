@@ -1,0 +1,15 @@
+{
+  "name": "projects_get_bad_uuid",
+  "method": "GET",
+  "path": "/api/v1/projects/not-a-uuid",
+  "status": 400,
+  "response_headers": {
+    "Content-Type": "application/json",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY"
+  },
+  "response_json": {
+    "error": "invalid project id"
+  }
+}

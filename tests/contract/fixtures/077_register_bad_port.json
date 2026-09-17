@@ -1,0 +1,20 @@
+{
+  "name": "register_bad_port",
+  "method": "POST",
+  "path": "/api/v1/agents/register",
+  "body": {
+    "registration_token": "x",
+    "port": 70000,
+    "auth_token": "y"
+  },
+  "status": 400,
+  "response_headers": {
+    "Content-Type": "application/json",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY"
+  },
+  "response_json": {
+    "error": "port must be between 1 and 65535"
+  }
+}

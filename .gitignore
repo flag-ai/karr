@@ -1,27 +1,25 @@
-# Binaries
-/karr
-*.exe
-
-# Test
-coverage.out
-*.test
-
-# Vendor
-vendor/
-
-# IDE
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+.env
+.env.*
+!.env.example
+# built SPA (produced by `npm run build` in frontend/)
+src/karr/web/static/*
+!src/karr/web/static/.gitkeep
+frontend/node_modules/
+frontend/dist/
 .idea/
 .vscode/
 *.swp
-*.swo
-*~
-
-# Node
-node_modules/
-web/dist/*
-!web/dist/.gitkeep
-*.tsbuildinfo
-
-# Environment
-.env
-.env.local
+# uv is only used ad hoc for multi-version test runs; poetry.lock is the lock file
+uv.lock

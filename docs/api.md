@@ -1,321 +1,245 @@
 # KARR API Reference
 
-Base URL: `http://localhost:8080`
+Generated from the OpenAPI schema (`karr openapi`); do not edit by hand, run
+`make api-docs`. Base URL in kitt-stack: `https://karr.internal.kirby.network`.
 
-## Health & Metrics
+**Authentication.** Routes marked *admin* need `Authorization: Bearer <KARR_ADMIN_TOKEN>`.
+`/health`, `/ready`, `/metrics`, `/api/v1/install.sh` and `/api/v1/agents/register`
+are open; the last two are gated by a one-time registration token instead.
+
+**Errors.** Every error body is `{"error": "<message>"}`: 400 for a missing or
+malformed JSON body, 422 for a body that fails validation (the message names the
+field), 401 without a valid bearer, 404 for an unknown id, 409 for a state
+conflict, 413 past the 1 MiB body limit, 429 when a rate limit trips (the
+token-bucket limits add `Retry-After`) or too many log streams are open, 502
+when BONNIE refuses an operation, 503 when provisioning is not configured.
+
+**Omitted fields.** Optional response fields (`project_id`, `container_id`,
+`status_message`, `last_seen_at`, `claimed_at`, `agent_id`, empty `env`/`mounts`/
+`command`) are absent rather than `null`, as in the Go service.
+
+
+## Health
 
 ### GET /health
 
-Liveness check. Does not probe dependencies.
+Liveness only; never touches a dependency.
 
-**Response 200**
-```json
-{
-  "status": "ok",
-  "version": "0.1.0 (abc1234, 2026-03-01)"
-}
-```
+**Response 200** — `object`
 
 ### GET /ready
 
-Readiness check. Verifies database connectivity and at least one BONNIE agent is online.
+Runs every registered check. `database` is critical; `bonnie-agents` and `reconciler` are informational, so an empty control plane is still ready. 503 when a critical check fails.
 
-**Response 200** (all checks pass)
-```json
-{
-  "healthy": true,
-  "version": "0.1.0 (abc1234, 2026-03-01)",
-  "checks": [
-    {"name": "database", "healthy": true, "latency_ms": 2},
-    {"name": "bonnie-agents", "healthy": true, "latency_ms": 1}
-  ]
-}
-```
+**Response 200** — `application/json`
 
-**Response 503** (one or more checks fail)
-```json
-{
-  "healthy": false,
-  "version": "0.1.0 (abc1234, 2026-03-01)",
-  "checks": [
-    {"name": "database", "healthy": true, "latency_ms": 2},
-    {"name": "bonnie-agents", "healthy": false, "error": "no online agents (1 registered, all offline)", "latency_ms": 5}
-  ]
-}
-```
+
+## Metrics
 
 ### GET /metrics
 
-Prometheus metrics endpoint.
+Prometheus text: `karr_http_requests_total`, `karr_http_request_duration_seconds`, `karr_build_info`, plus the `process_*`, `python_*` collectors.
 
----
+**Response 200** — `application/json`
+
+
+## Auth
+
+### GET /api/v1/auth/check *(admin)*
+
+204 with a valid token, 401 otherwise. The SPA's sign-in form calls it, so it is rate limited per client (429).
+
+**Response 204** — no body
+
+
+## Agent provisioning
+
+### POST /api/v1/agents/provision *(admin)*
+
+Creates a pending registration and returns the one-shot install command; 503 until `KARR_PUBLIC_URL` is set. Rate limited per client.
+
+**Request body** — `ProvisionRequest`
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `label` | string | yes | max 200 chars |
+
+**Response 201** — `ProvisionOut`
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `id` | string (uuid) | yes |  |
+| `token` | string | yes |  |
+| `install_command` | string | yes |  |
+| `expires_at` | string | yes |  |
+
+### GET /api/v1/agents/registrations *(admin)*
+
+**Response 200** — `RegistrationOut[]`
+
+### DELETE /api/v1/agents/registrations/{registration_id} *(admin)*
+
+404 for an unknown id.
+
+**Response 204** — no body
+
+
+## Agent installation
+
+### GET /api/v1/install.sh
+
+Query `token=<registration token>`. Serves the BONNIE installer only for a pending, unexpired registration: 400 for a missing or malformed token, 404 for an unknown one, 410 once it is claimed or expired. Plain-http server URLs need `KARR_ALLOW_INSECURE_INSTALL`.
+
+**Response 200** — no body
+
+### POST /api/v1/agents/register
+
+Called by the installer with the registration token; claims it and creates the agent in one transaction. 400 for a malformed body, 422 with a generic `registration failed` for an unknown, expired or already claimed token and for a label that clashes with an existing agent name (the same codes as the Go service, since BONNIE's installer consumes them). Rate limited per client; `X-Forwarded-For` is honoured only from `KARR_TRUSTED_PROXIES`.
+
+**Response 200** — `application/json`
+
 
 ## Agents
 
-### POST /api/v1/agents
+### GET /api/v1/agents *(admin)*
 
-Register a BONNIE agent.
+**Response 200** — `AgentOut[]`
 
-**Request**
-```json
-{
-  "name": "gpu-host-1",
-  "url": "http://gpu-host:7777",
-  "token": "bearer-token"
-}
-```
+### POST /api/v1/agents *(admin)*
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `name` | string | yes | Display name |
-| `url` | string | yes | BONNIE agent base URL |
-| `token` | string | no | Bearer token for authentication |
+`url` must be an http(s) URL without credentials; 409 when the name exists.
 
-**Response 201**
-```json
-{
-  "id": "550e8400-e29b-41d4-a716-446655440000",
-  "name": "gpu-host-1",
-  "url": "http://gpu-host:7777",
-  "status": "offline",
-  "last_seen_at": null,
-  "created_at": "2026-03-12T10:00:00Z",
-  "updated_at": "2026-03-12T10:00:00Z"
-}
-```
+**Request body** — `AgentCreate`
 
-> Token is never returned in responses.
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `name` | string | yes |  |
+| `url` | string | yes |  |
+| `token` | string | no |  |
 
-### GET /api/v1/agents
+**Response 201** — `AgentOut`
 
-List all registered agents.
+### GET /api/v1/agents/{agent_id} *(admin)*
 
-**Response 200**
-```json
-[
-  {
-    "id": "550e8400-e29b-41d4-a716-446655440000",
-    "name": "gpu-host-1",
-    "url": "http://gpu-host:7777",
-    "status": "online",
-    "last_seen_at": "2026-03-12T10:05:00Z",
-    "created_at": "2026-03-12T10:00:00Z",
-    "updated_at": "2026-03-12T10:05:00Z"
-  }
-]
-```
+**Response 200** — `AgentOut`
 
-### GET /api/v1/agents/{id}
+### DELETE /api/v1/agents/{agent_id} *(admin)*
 
-Get a single agent by UUID.
+409 while environments reference the agent unless `force=true`, which removes their containers on BONNIE first and then the rows; if a container cannot be removed the rows are kept and the call answers 409 naming the environments.
 
-**Response 200** — same shape as list item above.
+| Query | Type | Required | Notes |
+|---|---|---|---|
+| `force` | boolean | no |  |
 
-**Response 404**
-```json
-{"error": "agent not found"}
-```
+**Response 204** — no body
 
-### GET /api/v1/agents/{id}/status
+### GET /api/v1/agents/{agent_id}/status *(admin)*
 
-Get live system and GPU info from the agent. Fields `system` and `gpu` may be `null` if the agent is unreachable.
+`system` and `gpu` are present only while the agent is online and BONNIE answered; `gpu.gpus` can be `null` on hosts without a GPU.
 
-**Response 200**
-```json
-{
-  "agent": {
-    "id": "550e8400-e29b-41d4-a716-446655440000",
-    "name": "gpu-host-1",
-    "url": "http://gpu-host:7777",
-    "status": "online",
-    "last_seen_at": "2026-03-12T10:05:00Z",
-    "created_at": "2026-03-12T10:00:00Z",
-    "updated_at": "2026-03-12T10:05:00Z"
-  },
-  "system": {
-    "cpu_cores": 16,
-    "cpu_percent": 23.5,
-    "memory_total": 68719476736,
-    "memory_available": 34359738368,
-    "memory_percent": 50.0
-  },
-  "gpu": {
-    "gpus": [
-      {
-        "index": 0,
-        "name": "NVIDIA RTX 4090",
-        "memory_total": 24576,
-        "memory_allocated": 8192,
-        "memory_free": 16384,
-        "utilization": 0.35
-      }
-    ]
-  }
-}
-```
+**Response 200** — `AgentStatusOut`
 
-### DELETE /api/v1/agents/{id}
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `agent` | AgentOut | yes |  |
+| `system` | SystemInfoResponse, nullable | no |  |
+| `gpu` | GPUSnapshot, nullable | no |  |
 
-Remove an agent. **Response 204** (no body).
-
----
 
 ## Projects
 
-### POST /api/v1/projects
+### GET /api/v1/projects *(admin)*
 
-Create a project.
+**Response 200** — `ProjectOut[]`
 
-**Request**
-```json
-{
-  "name": "llama-finetune",
-  "description": "Fine-tuning Llama 3 on custom dataset"
-}
-```
+### POST /api/v1/projects *(admin)*
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `name` | string | yes | Project name |
-| `description` | string | no | Project description |
+409 when the name exists.
 
-**Response 201**
-```json
-{
-  "id": "660e8400-e29b-41d4-a716-446655440000",
-  "name": "llama-finetune",
-  "description": "Fine-tuning Llama 3 on custom dataset",
-  "created_at": "2026-03-12T10:00:00Z",
-  "updated_at": "2026-03-12T10:00:00Z"
-}
-```
+**Request body** — `ProjectCreate`
 
-### GET /api/v1/projects
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `name` | string | yes |  |
+| `description` | string | no |  |
 
-List all projects. **Response 200** — array of project objects.
+**Response 201** — `ProjectOut`
 
-### GET /api/v1/projects/{id}
+### GET /api/v1/projects/{project_id} *(admin)*
 
-Get a single project. **Response 200** — project object.
+**Response 200** — `ProjectOut`
 
-### PUT /api/v1/projects/{id}
+### PUT /api/v1/projects/{project_id} *(admin)*
 
-Update a project. Only provided fields are updated.
+A `null` or absent field is left unchanged.
 
-**Request**
-```json
-{
-  "name": "llama-finetune-v2",
-  "description": "Updated description"
-}
-```
+**Request body** — `ProjectUpdate`
 
-**Response 200** — updated project object.
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `name` | string, nullable | no |  |
+| `description` | string, nullable | no |  |
 
-### DELETE /api/v1/projects/{id}
+**Response 200** — `ProjectOut`
 
-Delete a project. **Response 204** (no body).
+### DELETE /api/v1/projects/{project_id} *(admin)*
 
----
+Environments keep running and lose their `project_id`.
+
+**Response 204** — no body
+
 
 ## Environments
 
-### POST /api/v1/environments
+### GET /api/v1/environments *(admin)*
 
-Create an AI development environment (container on a BONNIE host).
+**Response 200** — `EnvironmentOut[]`
 
-**Request**
-```json
-{
-  "name": "training-env",
-  "image": "pytorch/pytorch:2.2.0-cuda12.1-cudnn8-devel",
-  "agent_id": "550e8400-e29b-41d4-a716-446655440000",
-  "project_id": "660e8400-e29b-41d4-a716-446655440000",
-  "gpu": true,
-  "env": ["WANDB_API_KEY=...", "HF_TOKEN=..."],
-  "mounts": ["/data/models:/models:ro"],
-  "command": ["python", "train.py"]
-}
-```
+### POST /api/v1/environments *(admin)*
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `name` | string | yes | Environment name |
-| `image` | string | yes | Container image |
-| `agent_id` | uuid | yes | Target BONNIE agent |
-| `project_id` | uuid | no | Associated project |
-| `gpu` | boolean | no | Enable GPU passthrough (default: false) |
-| `env` | string[] | no | Environment variables |
-| `mounts` | string[] | no | Volume mounts |
-| `command` | string[] | no | Container command |
+400 for an unknown `agent_id` or `project_id`; 409 when the name exists on that agent. The row is created first, then the container; a BONNIE failure leaves the row in `error` with `status_message` and answers 502.
 
-**Response 201**
-```json
-{
-  "id": "770e8400-e29b-41d4-a716-446655440000",
-  "name": "training-env",
-  "image": "pytorch/pytorch:2.2.0-cuda12.1-cudnn8-devel",
-  "agent_id": "550e8400-e29b-41d4-a716-446655440000",
-  "project_id": "660e8400-e29b-41d4-a716-446655440000",
-  "container_id": "abc123def456",
-  "status": "stopped",
-  "gpu": true,
-  "env": ["WANDB_API_KEY=...", "HF_TOKEN=..."],
-  "mounts": ["/data/models:/models:ro"],
-  "command": ["python", "train.py"],
-  "created_at": "2026-03-12T10:00:00Z",
-  "updated_at": "2026-03-12T10:00:00Z"
-}
-```
+**Request body** — `EnvironmentCreate`
 
-### GET /api/v1/environments
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `agent_id` | string (uuid) | yes |  |
+| `project_id` | string (uuid), nullable | no |  |
+| `name` | string | yes |  |
+| `image` | string | yes |  |
+| `gpu` | boolean | no | default `false` |
+| `env` | string[] | no |  |
+| `mounts` | string[] | no |  |
+| `command` | string[] | no |  |
 
-List all environments. **Response 200** — array of environment objects.
+**Response 201** — `EnvironmentOut`
 
-### GET /api/v1/environments/{id}
+### GET /api/v1/environments/{env_id} *(admin)*
 
-Get a single environment. **Response 200** — environment object.
+**Response 200** — `EnvironmentOut`
 
-### POST /api/v1/environments/{id}/start
+### DELETE /api/v1/environments/{env_id} *(admin)*
 
-Start an environment's container. **Response 204** (no body). Returns **404** if the environment does not exist.
+Removes the container, then the row. 409 while a create is in flight; a container BONNIE no longer knows about is dropped once the reconciler has marked it missing.
 
-### POST /api/v1/environments/{id}/stop
+**Response 204** — no body
 
-Stop an environment's container. **Response 204** (no body). Returns **404** if the environment does not exist.
+### POST /api/v1/environments/{env_id}/start *(admin)*
 
-### DELETE /api/v1/environments/{id}
+409 unless the environment is `stopped`.
 
-Remove an environment and its container. **Response 204** (no body). Returns **404** if the environment does not exist.
+**Response 204** — no body
 
-### GET /api/v1/environments/{id}/logs
+### POST /api/v1/environments/{env_id}/stop *(admin)*
 
-Stream container logs via Server-Sent Events (SSE).
+409 unless the environment is `running`.
 
-**Response 200** (`text/event-stream`)
-```
-data: Starting training...
-data: Epoch 1/10: loss=2.345
-data: Epoch 2/10: loss=1.892
-```
+**Response 204** — no body
 
----
+### GET /api/v1/environments/{env_id}/logs *(admin)*
 
-## Request Limits
+SSE relay of the container logs (K-D2): keepalives, `event: end`, `event: error`.
 
-All request bodies are limited to **1 MiB**. Requests exceeding this limit receive a **413 Request Entity Too Large** response.
+`text/event-stream`. Each log line is one `data:` frame with backslash, CR and LF escaped as `\\`, `\r`, `\n`; `: keepalive` every 15 s; `event: end` when the container's stream closes (or after the 4 h stream limit), `event: error` with a message on failure. 409 when the environment has no container, 429 past 8 concurrent streams per agent or 3 per client.
 
-## Error Responses
-
-All endpoints return errors in a consistent format:
-
-```json
-{"error": "descriptive error message"}
-```
-
-| Status | Meaning |
-|--------|---------|
-| 400 | Bad request — invalid JSON or missing required fields |
-| 404 | Resource not found |
-| 413 | Request body exceeds 1 MiB limit |
-| 500 | Internal server error |
+**Response 200** — `text/event-stream`

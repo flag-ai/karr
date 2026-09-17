@@ -1,0 +1,15 @@
+{
+  "name": "environments_logs",
+  "notes": "SSE relay of the mock's four lines",
+  "method": "GET",
+  "path": "/api/v1/environments/e86e76c7-87b4-4c22-ad2b-c5fb51418c16/logs",
+  "status": 200,
+  "response_headers": {
+    "Cache-Control": "no-cache",
+    "Content-Type": "text/event-stream",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY"
+  },
+  "response_text": "data: container starting...\n\ndata: loading model weights\n\ndata: model loaded successfully\n\ndata: server listening on :8080\n\n"
+}

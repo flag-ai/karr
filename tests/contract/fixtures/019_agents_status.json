@@ -1,0 +1,55 @@
+{
+  "name": "agents_status",
+  "notes": "live from mock BONNIE after one registry poll",
+  "method": "GET",
+  "path": "/api/v1/agents/773947ea-1c76-4cfc-b881-a99dac638fb9/status",
+  "status": 200,
+  "response_headers": {
+    "Content-Type": "application/json",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY"
+  },
+  "response_json": {
+    "agent": {
+      "id": "773947ea-1c76-4cfc-b881-a99dac638fb9",
+      "name": "gpu-01",
+      "url": "http://127.0.0.1:34487",
+      "status": "online",
+      "last_seen_at": "2026-09-14T13:58:24.826907-04:00",
+      "created_at": "2026-09-14T13:58:24.826048-04:00",
+      "updated_at": "2026-09-14T13:58:24.826946-04:00"
+    },
+    "system": {
+      "system": {
+        "hostname": "test-host",
+        "os": "linux",
+        "arch": "amd64",
+        "kernel": "6.19.0",
+        "cpu_model": "AMD Ryzen 9 7950X",
+        "cpu_cores": 32,
+        "memory_mb": 131072
+      },
+      "disk": {
+        "total_gb": 2000,
+        "used_gb": 500,
+        "available_gb": 1500,
+        "used_percent": "25%"
+      }
+    },
+    "gpu": {
+      "vendor": "nvidia",
+      "gpus": [
+        {
+          "index": 0,
+          "name": "NVIDIA RTX 4090",
+          "vendor": "nvidia",
+          "memory_total_mib": 24576,
+          "memory_free_mib": 20480,
+          "utilization_percent": 15
+        }
+      ],
+      "timestamp": "2026-09-14T17:58:25.537082516Z"
+    }
+  }
+}

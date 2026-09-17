@@ -1,0 +1,28 @@
+{
+  "name": "ready_with_online_agent",
+  "method": "GET",
+  "path": "/ready",
+  "status": 200,
+  "response_headers": {
+    "Content-Type": "application/json",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY"
+  },
+  "response_json": {
+    "healthy": true,
+    "version": "dev (commit: unknown, built: unknown)",
+    "checks": [
+      {
+        "name": "database",
+        "healthy": true,
+        "latency_ms": 0
+      },
+      {
+        "name": "bonnie-agents",
+        "healthy": true,
+        "latency_ms": 0
+      }
+    ]
+  }
+}

@@ -1,139 +1,135 @@
 # KARR
 
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+**Kirizan's AI Refinement Runtime** — the FLAG control plane that provisions AI
+development environments on GPU hosts running [BONNIE](https://github.com/flag-ai/bonnie).
+Part of the [FLAG](https://github.com/flag-ai) platform alongside KITT and DEVON,
+built on [flag-commons](https://github.com/flag-ai/commons).
 
-**Kirizan's AI Refinement Runtime** — the model creation and fine-tuning workbench in the [FLAG (Foundation for Local AI Governance)](https://github.com/flag-ai) platform. KARR provides a web UI for managing AI development environments across BONNIE-managed GPU hosts.
+> **0.3.0 is a Python rewrite.** The Go service is preserved at tag
+> `go-final-0.2.2`. Routes, database schema and SPA are the same; the defects
+> fixed on the way are listed by K-D id in [docs/changelog.md](docs/changelog.md).
 
-KARR is one of several FLAG components that work together to provide a self-hosted AI infrastructure stack. [BONNIE](https://github.com/flag-ai/bonnie) agents run on GPU hosts, [KITT](https://github.com/flag-ai/kitt) handles inference benchmarking, and [DEVON](https://github.com/flag-ai/devon) manages model discovery. All components share infrastructure patterns via [flag-commons](https://github.com/flag-ai/commons).
+## What it does
 
-## Architecture
+- Registers BONNIE agents (GPU hosts) by hand or through a one-shot install
+  command: KARR provisions a registration token, the host runs `install.sh`,
+  BONNIE calls back and the agent appears.
+- Creates, starts, stops and removes container environments on those agents,
+  keeps their status reconciled against the hosts, and relays container logs
+  as server-sent events.
+- Groups environments into projects.
+- Serves a React SPA for all of the above and a JSON API behind an admin bearer
+  token; `/health`, `/ready` and `/metrics` stay open for the platform.
 
-```
-┌──────────────┐     HTTP      ┌──────────────┐     HTTP      ┌──────────────┐
-│  KARR Web UI │ ◄──────────► │  KARR Server  │ ◄──────────► │ BONNIE Agent │
-│ (React SPA)  │              │   (Go API)    │              │  (GPU Host)  │
-└──────────────┘              └──────┬───────┘              └──────────────┘
-                                     │
-                                     │ pgx
-                                     ▼
-                              ┌──────────────┐
-                              │ PostgreSQL 17 │
-                              └──────────────┘
-```
+Stack: Python 3.10+, FastAPI, SQLAlchemy 2 + psycopg 3, Alembic, PostgreSQL 17,
+`flag-commons` (config, secrets, logging, health, database, BONNIE client,
+install script), React 19 + Vite 6 frontend, `prometheus_client`.
 
-KARR never touches hardware directly — all GPU/container operations go through BONNIE agents over HTTP.
-
-## Tech Stack
-
-- **Backend:** Go 1.25, Chi router, sqlc, PostgreSQL 17
-- **Frontend:** React 19, TypeScript, Vite, TanStack Query
-- **Shared libraries:** [flag-commons](https://github.com/flag-ai/commons)
-- **Containerization:** Docker multi-stage build (Alpine)
-- **Monitoring:** Prometheus metrics at `/metrics`
-- **Theme:** [Catppuccin Mocha](https://github.com/catppuccin/catppuccin)
-
-## Prerequisites
-
-- Go 1.25+
-- Node.js 22+
-- Docker & Docker Compose
-- PostgreSQL 17 (or use docker-compose)
-- sqlc (for code generation)
-
-## Quick Start
+## Run
 
 ```bash
-# Start Postgres
-docker compose up -d postgres
-
-# Run migrations and start the server
-go run ./cmd/karr migrate up
-go run ./cmd/karr serve
-
-# Frontend development (separate terminal)
-cd web && npm install && npm run dev
+export DATABASE_URL=postgresql://karr:karr@localhost:5432/karr
+export KARR_ADMIN_TOKEN=...      # >= 16 chars: python -c 'import secrets; print(secrets.token_urlsafe(32))'
+export KARR_SECRET_KEY=...       # Fernet key: python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'
+export KARR_PUBLIC_URL=https://karr.example.com   # embedded in install commands
+karr migrate up
+karr serve
 ```
 
-The API is available at `http://localhost:8080` and the dev frontend at `http://localhost:5173`.
+Open the address in a browser and sign in with the value of `KARR_ADMIN_TOKEN`;
+the SPA keeps it in `sessionStorage` for the tab and sends it as a bearer token.
+Anything but a loopback deployment must sit behind a TLS terminator (in
+kitt-stack that is Traefik): the admin token and the one-time registration
+tokens in install commands travel in every request. Set `KARR_ENABLE_HSTS=true`
+once TLS is in place. [docs/usage.md](docs/usage.md) walks through the first
+agent and environment; [docs/api.md](docs/api.md) is the API reference.
 
-## Configuration
+### Configuration
 
-All configuration is via environment variables (or OpenBao secrets):
+Every value is read from the environment, or from OpenBao when `OPENBAO_ADDR`
+and `OPENBAO_TOKEN` are set (see flag-commons). `.env.example` lists them all.
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `DATABASE_URL` | Yes | — | PostgreSQL connection string |
-| `LOG_LEVEL` | No | `info` | debug, info, warn, error |
-| `LOG_FORMAT` | No | `text` | text or json |
-| `LISTEN_ADDR` | No | `:8080` | HTTP listen address |
-| `KARR_DEFAULT_AGENT_URL` | No | — | Auto-register a BONNIE agent on startup |
-| `KARR_DEFAULT_AGENT_TOKEN` | No | — | Bearer token for the default agent |
-| `KARR_CORS_ORIGINS` | No | — | Comma-separated allowed CORS origins |
-| `POSTGRES_PASSWORD` | docker-compose | — | PostgreSQL password (required for docker-compose) |
-| `GF_ADMIN_PASSWORD` | docker-compose | — | Grafana admin password (required for docker-compose) |
+| Variable | Default | Purpose |
+|---|---|---|
+| `DATABASE_URL` | *(required)* | PostgreSQL URL; `postgres://` and `postgresql://` are normalised to psycopg. Use `sslmode=require` off-host. |
+| `KARR_ADMIN_TOKEN` | *(required)* | Bearer token for `/api/v1/*` and the SPA; at least 16 characters. |
+| `KARR_SECRET_KEY` | *(required)* | Fernet key that encrypts agent tokens at rest. |
+| `KARR_PUBLIC_URL` | | Public base URL written into install commands; provisioning answers 503 until it is set. Validated at boot. |
+| `LISTEN_ADDR` | `:8080` | Bind address. |
+| `LOG_LEVEL` / `LOG_FORMAT` | `info` / `text` | slog-compatible logging; `json` for the stack. |
+| `KARR_CORS_ORIGINS` | | Comma-separated explicit origins (never `*`); only needed for the Vite dev server. |
+| `KARR_TRUSTED_PROXIES` | | CIDRs whose `X-Forwarded-*` headers are trusted; rate limits key on the direct peer otherwise. |
+| `KARR_REGISTRATION_TTL` | `3600` | Lifetime of a provisioned registration token, max 7 days. |
+| `KARR_RECONCILE_INTERVAL` | `30` | Seconds between reconciliation passes over online agents. |
+| `KARR_RECONCILE_TIMEOUT` | `20` | Per-agent budget (BONNIE call plus database write) inside one pass. |
+| `KARR_DEFAULT_AGENT_URL` / `_TOKEN` | | Seed one agent at boot (best effort). |
+| `KARR_ENABLE_HSTS` | `false` | Send `Strict-Transport-Security`; turn on behind TLS. |
+| `KARR_ALLOW_INSECURE_INSTALL` | `false` | Allow a plain-http `KARR_PUBLIC_URL` for labs without TLS. |
 
-See `.env.example` for all options.
+### Docker
 
-## BONNIE Agent Registration
-
-Register a BONNIE agent via the API:
+The image builds the frontend and the service in one multi-stage `Dockerfile`
+(non-root, `HEALTHCHECK` on `/health`). `docker-compose.yml` runs PostgreSQL and
+KARR locally, with an `observability` profile that adds Prometheus and Grafana
+provisioned with `grafana/dashboards/karr-overview.json`:
 
 ```bash
-curl -X POST http://localhost:8080/api/v1/agents \
-  -H 'Content-Type: application/json' \
-  -d '{"name":"gpu-host-1","url":"http://gpu-host:7777","token":"your-bonnie-token"}'
+cp .env.example .env            # fill KARR_ADMIN_TOKEN, KARR_SECRET_KEY, GF_ADMIN_PASSWORD (POSTGRES_PASSWORD has a dev default)
+docker compose up -d postgres karr
+docker compose --profile observability up -d
 ```
 
-Or set `KARR_DEFAULT_AGENT_URL` and `KARR_DEFAULT_AGENT_TOKEN` to auto-register on startup.
+Provisioning needs `KARR_PUBLIC_URL` in `.env`; for a plain-http lab run also
+set `KARR_ALLOW_INSECURE_INSTALL=true`. Compose passes secrets as container
+environment (visible to `docker inspect`), which is acceptable for a
+development box only; production takes them from OpenBao through the stack
+`.env`.
 
-## API Routes
+`docker-compose.dev.yml` swaps the service for `uvicorn --reload` over the
+bind-mounted `src/` (`Dockerfile.dev`); pair it with `npm run dev` in
+`frontend/`.
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/health` | Liveness check |
-| GET | `/ready` | Readiness check (DB) |
-| GET | `/metrics` | Prometheus metrics |
-| GET/POST | `/api/v1/agents` | List/create agents |
-| GET/DELETE | `/api/v1/agents/{id}` | Get/delete agent |
-| GET | `/api/v1/agents/{id}/status` | Live GPU + system info |
-| GET/POST | `/api/v1/projects` | List/create projects |
-| GET/PUT/DELETE | `/api/v1/projects/{id}` | Get/update/delete project |
-| GET/POST | `/api/v1/environments` | List/create environments |
-| GET/DELETE | `/api/v1/environments/{id}` | Get/remove environment |
-| POST | `/api/v1/environments/{id}/start` | Start environment |
-| POST | `/api/v1/environments/{id}/stop` | Stop environment |
-| GET | `/api/v1/environments/{id}/logs` | Stream logs (SSE) |
+Production runs from the kitt-stack compose in the infrastructure repository,
+updated through Portainer; see the FLAG documentation in the vault.
 
 ## Development
 
 ```bash
-make dev           # Start Postgres
-make test          # Unit tests with coverage
-make test-integration  # Integration tests (needs Postgres)
-make lint          # golangci-lint
-make sqlc          # Regenerate sqlc code
-make build         # Build Go binary
-make build-web     # Build frontend
-make docker        # Docker compose build
+poetry install --with dev
+make lint          # ruff check, ruff format --check, mypy
+make test          # unit + contract tests, no database needed
+make security      # bandit, pip-audit
+TEST_DATABASE_URL=postgresql://karr:pw@localhost:5432/karr_test make test-all
 ```
 
-### Hot Reload (Air)
+The integration suite creates and drops the `karr_*` tables in the database it
+is given; CI runs it against a PostgreSQL 17 service and enforces 85 % coverage.
+The contract suite replays the 87 fixtures recorded from the Go service; every
+intentional difference is annotated with its K-D id in `tests/contract/README.md`.
 
-For backend development with automatic rebuilds on file changes, use the dev container overlay:
+### Frontend
 
-```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up
-```
+The SPA lives in `frontend/` (React 19, react-router 7, TanStack Query 5,
+Vite 6, TypeScript strict, Vitest). The Docker build compiles it and copies
+`dist/` into `src/karr/web/static/`, which the service serves with an
+`index.html` fallback. Locally, `make frontend` runs the checks, builds and
+installs it; `npm run dev` starts Vite on port 5173 and proxies `/api`,
+`/health`, `/ready` and `/metrics` to a `karr serve` on port 8080.
 
-This uses [Air](https://github.com/air-verse/air) to watch for Go, SQL, and YAML file changes and automatically rebuild and restart the server. The source directory is bind-mounted into the container, so edits take effect without rebuilding the image. Run the frontend dev server separately with `cd web && npm run dev`.
+### Observability
 
-## Full Stack (Docker)
+`/metrics` exposes `karr_http_requests_total` and
+`karr_http_request_duration_seconds` by route template, `karr_build_info`, and
+the `process_*`, `python_*` collectors. The Grafana dashboard shows request rate
+and p95 latency by route, status classes, RSS and CPU, open file descriptors
+and Python GC activity, in Catppuccin Mocha, selected by the Prometheus `job`
+variable. `/ready` reports the database (critical), `bonnie-agents` and
+`reconciler` (informational); it runs a real database round trip per call and
+is unauthenticated, so keep it behind the platform's ingress limits.
 
-```bash
-docker compose up
-```
+### API docs
 
-Dashboard at `http://localhost:8080`, Prometheus at `http://localhost:9090`, Grafana at `http://localhost:3000`. Grafana is pre-provisioned with a KARR Overview dashboard, Prometheus datasource, and auto-discovery of dashboards from `grafana/dashboards/`.
+`docs/api.md` is generated: `make api-docs` (a unit test fails when it is stale).
 
 ## License
 

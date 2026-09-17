@@ -1,17 +1,13 @@
-# Development overrides — use with: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+# Development overrides: uvicorn --reload over a bind-mounted source tree.
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up karr
+# The SPA is served by Vite in that mode: `cd frontend && npm run dev`.
 services:
   karr:
     build:
       context: .
       dockerfile: Dockerfile.dev
     volumes:
-      - .:/app
-      - go-mod-cache:/go/pkg/mod
+      - ./src:/app/src:ro
     environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-karr}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-karr}?sslmode=disable
-      KARR_DEFAULT_AGENT_URL: ${KARR_DEFAULT_AGENT_URL:-}
-      KARR_DEFAULT_AGENT_TOKEN: ${KARR_DEFAULT_AGENT_TOKEN:-}
       KARR_CORS_ORIGINS: ${KARR_CORS_ORIGINS:-http://localhost:5173}
-
-volumes:
-  go-mod-cache:
+      LOG_LEVEL: ${LOG_LEVEL:-debug}
