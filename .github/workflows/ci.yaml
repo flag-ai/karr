@@ -2,12 +2,18 @@ name: CI
 
 on:
   push:
-    branches: [main, rewrite/python]
+    branches: [main]
   pull_request:
-    branches: [main, rewrite/python]
+    branches: [main]
 
 permissions:
   contents: read
+
+# A newer push to the same branch cancels the run in flight; a lost runner
+# then never blocks a PR (it happened twice on rewrite/python).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   lint:
