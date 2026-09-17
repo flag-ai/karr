@@ -42,6 +42,9 @@ pip-audit = ">=2.7"
 testpaths = ["tests"]
 pythonpath = ["src"]
 timeout = 60
+# "thread" cannot be swallowed by a stuck event loop: it dumps every stack and
+# exits, so a hung test fails the job instead of blocking it for hours
+timeout_method = "thread"
 markers = [
     "integration: needs a live PostgreSQL (TEST_DATABASE_URL)",
     "contract: replays the Go parity fixtures",

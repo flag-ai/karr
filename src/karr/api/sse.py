@@ -184,14 +184,24 @@ async def relay(
                     "end", "stream time limit reached; reconnect to continue"
                 )
                 return
+            # asyncio.wait, not wait_for: on Python 3.10 wait_for swallows a
+            # cancellation that lands as the item arrives, and a swallowed
+            # client-disconnect would keep this relay (and its BONNIE stream)
+            # alive. wait() re-raises cancellation; the getter is cancelled here.
+            getter = asyncio.ensure_future(queue.get())
             try:
-                kind, payload = await asyncio.wait_for(
-                    queue.get(), timeout=min(keepalive_seconds, remaining)
+                done, _ = await asyncio.wait(
+                    {getter}, timeout=min(keepalive_seconds, remaining)
                 )
-            except asyncio.TimeoutError:
+            except BaseException:
+                getter.cancel()
+                raise
+            if not done:
+                getter.cancel()
                 if deadline - asyncio.get_running_loop().time() > 0:
                     yield KEEPALIVE_FRAME
                 continue
+            kind, payload = getter.result()
             if kind == "line":
                 yield data_frame(payload or "")
             elif kind == "end":
