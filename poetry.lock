@@ -780,8 +780,8 @@ postgres = ["alembic (>=1.13,<2.0)", "psycopg[binary] (>=3.1,<4.0)", "sqlalchemy
 [package.source]
 type = "git"
 url = "https://github.com/flag-ai/commons"
-reference = "rewrite/python"
-resolved_reference = "3690031d13c554d314e80c5586e3ecedf4014047"
+reference = "4eb9173"
+resolved_reference = "4eb917305a9afa3d9df4f3e560e2ddf0d217c2e2"
 
 [[package]]
 name = "greenlet"
@@ -3027,4 +3027,4 @@ files = [
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.10"
-content-hash = "94e67dd2f20cca8f5fbf1dcac56e7c0ae364d9a505b254511f394f0357098ba9"
+content-hash = "ca572ec1f8124a2c23802a155e52a2ee5e5f357c043be698bba8fd6422ef5cd1"
